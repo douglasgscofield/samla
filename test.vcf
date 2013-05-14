@@ -1,0 +1,48 @@
+##fileformat=VCFv4.1
+##samtoolsVersion=0.1.18 (r982:295)
+##INFO=<ID=DP,Number=1,Type=Integer,Description="Raw read depth">
+##INFO=<ID=DP4,Number=4,Type=Integer,Description="# high-quality ref-forward bases, ref-reverse, alt-forward and alt-reverse bases">
+##INFO=<ID=MQ,Number=1,Type=Integer,Description="Root-mean-square mapping quality of covering reads">
+##INFO=<ID=FQ,Number=1,Type=Float,Description="Phred probability of all samples being the same">
+##INFO=<ID=AF1,Number=1,Type=Float,Description="Max-likelihood estimate of the first ALT allele frequency (assuming HWE)">
+##INFO=<ID=AC1,Number=1,Type=Float,Description="Max-likelihood estimate of the first ALT allele count (no HWE assumption)">
+##INFO=<ID=G3,Number=3,Type=Float,Description="ML estimate of genotype frequencies">
+##INFO=<ID=HWE,Number=1,Type=Float,Description="Chi^2 based HWE test P-value based on G3">
+##INFO=<ID=CLR,Number=1,Type=Integer,Description="Log ratio of genotype likelihoods with and without the constraint">
+##INFO=<ID=UGT,Number=1,Type=String,Description="The most probable unconstrained genotype configuration in the trio">
+##INFO=<ID=CGT,Number=1,Type=String,Description="The most probable constrained genotype configuration in the trio">
+##INFO=<ID=PV4,Number=4,Type=Float,Description="P-values for strand bias, baseQ bias, mapQ bias and tail distance bias">
+##INFO=<ID=INDEL,Number=0,Type=Flag,Description="Indicates that the variant is an INDEL.">
+##INFO=<ID=PC2,Number=2,Type=Integer,Description="Phred probability of the nonRef allele frequency in group1 samples being larger (,smaller) than in group2.">
+##INFO=<ID=PCHI2,Number=1,Type=Float,Description="Posterior weighted chi^2 P-value for testing the association between group1 and group2 samples.">
+##INFO=<ID=QCHI2,Number=1,Type=Integer,Description="Phred scaled PCHI2.">
+##INFO=<ID=PR,Number=1,Type=Integer,Description="# permutations yielding a smaller PCHI2.">
+##INFO=<ID=VDB,Number=1,Type=Float,Description="Variant Distance Bias">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">
+##FORMAT=<ID=GL,Number=3,Type=Float,Description="Likelihoods for RR,RA,AA genotypes (R=ref,A=alt)">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="# high-quality bases">
+##FORMAT=<ID=SP,Number=1,Type=Integer,Description="Phred-scaled strand bias P-value">
+##FORMAT=<ID=PL,Number=G,Type=Integer,Description="List of Phred-scaled genotype likelihoods">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SwAsp006
+scaffold_1	1	.	T	.	41.9	.	DP=4;AF1=0;AC1=0;DP4=4,0,0,0;MQ=10;FQ=-39	PL	0
+scaffold_1	2	.	G	.	41.9	.	DP=4;AF1=0;AC1=0;DP4=4,0,0,0;MQ=10;FQ=-39	PL	0
+scaffold_1	9	.	G	.	45	.	DP=5;AF1=0;AC1=0;DP4=5,0,0,0;MQ=10;FQ=-42	PL	0
+scaffold_1	10	.	A	.	45	.	DP=5;AF1=0;AC1=0;DP4=5,0,0,0;MQ=10;FQ=-42	PL	0
+scaffold_1	56	.	T	.	78	.	DP=16;AF1=0;AC1=0;DP4=11,5,0,0;MQ=33;FQ=-75	PL	0
+scaffold_1	57	.	G	.	84	.	DP=18;AF1=0;AC1=0;DP4=13,5,0,0;MQ=37;FQ=-81	PL	0
+scaffold_1	58	.	C	.	84	.	DP=18;AF1=0;AC1=0;DP4=13,5,0,0;MQ=37;FQ=-81	PL	0
+scaffold_1	58	.	CATATATATATATATA	CATATATATATA	214	.	INDEL;DP=18;VDB=0.0196;AF1=1;AC1=2;DP4=0,0,13,5;MQ=37;FQ=-88.5	GT:PL:GQ	1/1:255,54,0:99
+scaffold_1	59	.	A	.	28.2	.	DP=0;;AC1=2;FQ=-30	PL	0
+scaffold_1	60	.	T	.	28.2	.	DP=0;VDB=0.0196;;AC1=2;FQ=-30	PL	0
+scaffold_1	319	.	G	.	104	.	DP=37;AF1=0;AC1=0;DP4=17,19,0,1;MQ=46;FQ=-101;PV4=1,0.32,0.35,0.0035	PL	0
+scaffold_1	320	.	T	.	144	.	DP=38;AF1=0;AC1=0;DP4=18,20,0,0;MQ=46;FQ=-141	PL	0
+scaffold_1	418	.	T	.	174	.	DP=48;AF1=0;AC1=0;DP4=26,22,0,0;MQ=52;FQ=-171	PL	0
+scaffold_1	419	.	T	.	171	.	DP=47;AF1=0;AC1=0;DP4=25,22,0,0;MQ=53;FQ=-168	PL	0
+scaffold_1	420	.	T	.	174	.	DP=48;AF1=0;AC1=0;DP4=25,23,0,0;MQ=54;FQ=-171	PL	0
+scaffold_1	421	.	T	.	178	.	DP=49;AF1=0;AC1=0;DP4=25,24,0,0;MQ=53;FQ=-175	PL	0
+scaffold_1	422	.	A	T	222	.	DP=49;VDB=0.0364;AF1=1;AC1=2;DP4=0,0,25,24;MQ=53;FQ=-175	GT:PL:GQ	1/1:255,148,0:99
+scaffold_1	423	.	A	T	225	.	DP=48;VDB=0.0388;AF1=0.5;AC1=1;DP4=16,15,8,9;MQ=54;FQ=225;PV4=1,0.31,0.37,0.32	GT:PL:GQ	0/1:255,0,255:99
+scaffold_1	424	.	A	.	174	.	DP=48;AF1=0;AC1=0;DP4=24,24,0,0;MQ=54;FQ=-171	PL	0
+scaffold_1	435	.	T	C	225	.	DP=51;VDB=0.0353;AF1=0.5;AC1=1;DP4=9,7,20,15;MQ=55;FQ=225;PV4=1,1,1,1	GT:PL:GQ	0/1:255,0,255:99
+scaffold_1	436	.	T	.	187	.	DP=52;AF1=0;AC1=0;DP4=30,22,0,0;MQ=55;FQ=-184	PL	0

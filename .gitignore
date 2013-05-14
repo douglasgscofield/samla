@@ -1,0 +1,5 @@
+.DS_Store
+._*
+*.swp
+*.vcf.gz
+*.vcf.gz.tbi
