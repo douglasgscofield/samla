@@ -2,7 +2,7 @@
 CXX=		g++
 #CXX=		/opt/local/bin/gcc
 #CXXFLAGS=	-Wall -O3 -D_WITH_DEBUG 
-CXXFLAGS=	-Wall -g -D_FILE_OFFSET_BITS=64 -D_WITH_DEBUG -fno-inline -I../vcflib
+CXXFLAGS=	-Wall -g3 -ggdb -D_FILE_OFFSET_BITS=64 -D_WITH_DEBUG -fvar-tracking-assignments -fno-inline -I../vcflib
 #CXXFLAGS=	-Wall -pg -g -D_WITH_DEBUG 
 
 PROG=		samla

@@ -25,7 +25,6 @@
 ##FORMAT=<ID=SP,Number=1,Type=Integer,Description="Phred-scaled strand bias P-value">
 ##FORMAT=<ID=PL,Number=G,Type=Integer,Description="List of Phred-scaled genotype likelihoods">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SwAsp006
-scaffold_1	1	.	T	.	41.9	.	DP=4;AF1=0;AC1=0;DP4=4,0,0,0;MQ=10;FQ=-39	PL	0
 scaffold_1	2	.	G	.	41.9	.	DP=4;AF1=0;AC1=0;DP4=4,0,0,0;MQ=10;FQ=-39	PL	0
 scaffold_1	9	.	G	.	45	.	DP=5;AF1=0;AC1=0;DP4=5,0,0,0;MQ=10;FQ=-42	PL	0
 scaffold_1	10	.	A	.	45	.	DP=5;AF1=0;AC1=0;DP4=5,0,0,0;MQ=10;FQ=-42	PL	0
@@ -41,6 +40,6 @@ scaffold_1	418	.	T	.	174	.	DP=48;AF1=0;AC1=0;DP4=26,22,0,0;MQ=52;FQ=-171	PL	0
 scaffold_1	419	.	T	.	171	.	DP=47;AF1=0;AC1=0;DP4=25,22,0,0;MQ=53;FQ=-168	PL	0
 scaffold_1	420	.	T	.	174	.	DP=48;AF1=0;AC1=0;DP4=25,23,0,0;MQ=54;FQ=-171	PL	0
 scaffold_1	422	.	A	T	222	.	DP=49;VDB=0.0364;AF1=1;AC1=2;DP4=0,0,25,24;MQ=53;FQ=-175	GT:PL:GQ	1/1:255,148,0:99
-scaffold_1	424	.	A	.	174	.	DP=48;AF1=0;AC1=0;DP4=24,24,0,0;MQ=54;FQ=-171	PL	0
-scaffold_1	435	.	T	C	225	.	DP=51;VDB=0.0353;AF1=0.5;AC1=1;DP4=9,7,20,15;MQ=55;FQ=225;PV4=1,1,1,1	GT:PL:GQ	0/1:255,0,255:99
-scaffold_1	436	.	T	.	187	.	DP=52;AF1=0;AC1=0;DP4=30,22,0,0;MQ=55;FQ=-184	PL	0
+scaffold_2	424	.	A	.	174	.	DP=48;AF1=0;AC1=0;DP4=24,24,0,0;MQ=54;FQ=-171	PL	0
+scaffold_2	435	.	T	C	225	.	DP=51;VDB=0.0353;AF1=0.5;AC1=1;DP4=9,7,20,15;MQ=55;FQ=225;PV4=1,1,1,1	GT:PL:GQ	0/1:255,0,255:99
+scaffold_2	436	.	T	.	187	.	DP=52;AF1=0;AC1=0;DP4=30,22,0,0;MQ=55;FQ=-184	PL	0

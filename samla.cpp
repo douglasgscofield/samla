@@ -112,6 +112,21 @@ class VcfStripmine {
                     //delete last_var;
                 }
             }
+            bool get_next_variant(void) {
+                // Call vcflib's getNextVariant() within this wrapper.  Currently it:
+                // 1. skips indels
+                // 2. sets is_open = false for the strip if no more variants
+                while (vcf->getNextVariant(*var)) {
+                    if (VcfStripmine::is_indel(*var)) {
+                        if (DEBUG(1)) cerr << ".get_next_variant: skipped indel at " << vcf_filename << " : " << var->sequenceName << " : " << var->position << endl;
+                        continue;
+                    }
+                    return(true);
+                }
+                if (DEBUG(1)) cerr << ".get_next_variant: no more variants in " << vcf_filename << endl;
+                is_open = false;
+                return(false);
+            }
         };
         typedef map<string, VcfStrip>     Stripmine;
         typedef Stripmine::iterator       StripmineI;
@@ -146,22 +161,19 @@ class VcfStripmine {
         void print(bool details = true) const {
             cerr << "VcfStripmine.print:" << endl << tab << "first_vcf:" << first_vcf << "  first_ref:" << first_ref 
                 << " ref:" << ref << "  pos:" << pos << " last_ref:" << last_ref << "  last_pos:" << last_pos << endl;
-            if (details) {
-                for (StripmineCI p = the_mine.begin(); p != the_mine.end(); ++p) {
-                    cerr << tab << p->first << "  vcf:" << p->second.vcf_filename <<  "  is_open:" << p->second.is_open << endl;
-                    //cerr << "VcfStripmine.print:" << p->first << ":vcf  : " << p->second.vcf->sampleNames << endl;
-                    cerr << tab << p->first << "  var:" << *p->second.var << endl;
-                    //cerr << "VcfStripmine.print:" << p->first << ":last_: " << p->second.last_var << endl;
-                }
-            }
+            if (details) show_pos(".print", true);
         }
-        void show_pos(const string& msg = "") const {
-            cerr << "VcfStripmine.show_pos: " << msg << ": CLASS ref:" << ref << " pos:" << pos << endl;
+        void show_pos(const string& msg = "", bool details = false) const {
+            cerr << "VcfStripmine.show_pos: " << msg << endl;
+            cerr << tab << "VCF" << tab << "REF" << tab << "POS" << endl;
+            cerr << tab << "*class*" << tab << ref << tab << pos << tab << "last_ref:" << last_ref << tab << "last_pos:" << last_pos << endl;
             for (StripmineCI p = the_mine.begin(); p != the_mine.end(); ++p) {
                 if (! p->second.is_open)
-                    cerr << tab << "VCF:" << p->first << " is_open = false" << endl;
-                else
-                    cerr << tab << "VCF:" << p->first << " ref:" << p->second.var->sequenceName << " pos:" << p->second.var->position << endl;
+                    cerr << tab << p->first << tab << "is_open = false" << endl;
+                else {
+                    cerr << tab << p->first << tab << p->second.var->sequenceName << tab << p->second.var->position << endl;
+                    if (details) cerr << *p->second.var << endl;
+                }
             }
         }
         bool error_false(const string& msg = "", const string& msg2 = "", const string& msg3 = "", const string& msg4 = "") const {
@@ -225,21 +237,18 @@ class VcfStripmine {
             // process the first variant in each VCF
             // TODO: someday: can combine the following and this loop if I change the_refs[] a bit
             int n = 0;
-            for (StripmineI p = the_mine.begin(); p != the_mine.end(); ++p) {
-                if (p->second.vcf->getNextVariant(*p->second.var)) 
-                    ++n;
-                else 
-                    p->second.is_open = false;
-            }
+            for (StripmineI p = the_mine.begin(); p != the_mine.end(); ++p)
+                if (p->second.get_next_variant()) ++n;
             if (! n) return(error_false(".initiate: couldn't find variants in any of the files in the mine"));
             // ref_index = 0 should be a no-op, it is initialised to 0 by our ctor
-            for (ref_index = 0; ref.empty() && ref_index < the_refs.size(); ++ref_index) {
+            for (ref_index = 0; ref_index < the_refs.size(); ++ref_index) {
                 for (StripmineI p = the_mine.begin(); p != the_mine.end(); ++p) {
                     if (the_refs[ref_index] == p->second.var->sequenceName) {
                         ref = the_refs[ref_index];
                         break;
                     }
                 }
+                if (! ref.empty()) break;
             }
             if (ref.empty()) return(error_false(".initiate: couldn't find variants for any of the supplied references"));
             pos = 0;
@@ -270,50 +279,42 @@ class VcfStripmine {
         }
         bool find_next_pos_new_ref(void) {
             // we don't have a ref or we have to switch to a new one, and all variants are unharvested
+            if (DEBUG(2)) print(true);
             string new_ref;
             long new_pos = 0;
-            for (++ref_index; new_ref.empty() && ref_index < the_refs.size(); ++ref_index) {
+            for (++ref_index; ref_index < the_refs.size(); ++ref_index) {
                 for (StripmineI p = the_mine.begin(); p != the_mine.end(); ++p) {
                     if (! p->second.is_open) continue;
                     if (the_refs[ref_index] == p->second.var->sequenceName) {
                         new_ref = the_refs[ref_index];
-                        if (new_pos == 0 || new_pos > p->second.var->position)
-                            new_pos = p->second.var->position;
+                        if (new_pos == 0 || new_pos > p->second.var->position) new_pos = p->second.var->position;
                         break;
                     }
                 }
+                if (! new_ref.empty()) break;
             }
             if (new_ref.empty() || new_pos == 0) {
                 if (DEBUG(1)) cerr << ".find_next_pos_new_ref: could not find a new variant" << endl;
+                if (DEBUG(2)) print(true);
                 return(false);
             }
             last_ref = ref;
             last_pos = pos;
             ref = new_ref;
             pos = new_pos;
-            return(true);
-        }
-        bool get_next_variant(VcfStrip& this_strip) { //VariantCallFile& this_vcf, Variant& this_var) {
-            // do my own version, so I can do mods to the strip and skip (for now!) indels
-            if (! this_strip.vcf->getNextVariant(this_strip.var)) {
-                this_strip.is_open = false;
-            }
+            if (DEBUG(2)) print(true);
             return(true);
         }
         void refresh_variants(void) {
+            StripmineI p;
             // called to make all variants unharvested; we assume that any variants
             // that match the current ref and pos were harvested in the last round, so get
             // the next variant in each such vcf, or close it
-            for (StripmineI p = the_mine.begin(); p != the_mine.end(); ++p) {
+            for (p = the_mine.begin(); p != the_mine.end(); ++p) {
                 if (! p->second.is_open) continue;
                 if (p->second.var->sequenceName == ref && p->second.var->position == pos) {
-                    if (DEBUG(1)) cerr << ".refresh_varaints: getting new variant from " << p->first << endl;
-                    if (! p->second.vcf->getNextVariant(*p->second.var)) {
-                        p->second.is_open = false; // TODO: should we just delete the VCF from the mine in this case? maybe not, couldn't refresh
-                    } else if (p->second.var->sequenceName == ref && p->second.var->position == pos) {
-                        cerr << ".refresh_varaints: next variant in " << p->first << " from same ref and pos as previous, skipping past it for now... " << endl;
-                        if (! p->second.vcf->getNextVariant(*p->second.var)) p->second.is_open = false;
-                    }
+                    if (DEBUG(2)) cerr << ".refresh_variants: getting new variant from " << p->first << endl;
+                    p->second.get_next_variant();
                 }
             }
         }
@@ -334,7 +335,7 @@ class VcfStripmine {
         }
     public:
         bool get(VariantConstPtr_vector& vars) {
-            // Returns the next set of varaints in the mine.  Upon exit, vars[] holds the (immutable)
+            // Returns the next set of variants in the mine.  Upon exit, vars[] holds the (immutable)
             // variants, ref and pos of the class point to the location of the variants being returned,
             // and last_ref and last_pos hold the location of the last variant returned.
             //
@@ -343,8 +344,7 @@ class VcfStripmine {
             // reference for the first variant (checked for reference name only), and all the_mine[].var 
             // variants are unharvested
             if (ref.empty()) error_exit("VcfStripmine.get: must call .initiate() before first call to .get()");
-            if (DEBUG(2)) cerr << ".get: vars came in containing " << vars.size() << " variants" << endl;
-            if (vars.size()) vars.clear();
+            vars.clear();
             if (pos == 0) { 
                 // just initialised, all variants unharvested, at least one variant holds a variant in the reference named in ref
                 if (! find_next_pos())
@@ -361,6 +361,16 @@ class VcfStripmine {
             if (DEBUG(1)) cerr << ".get: returning " << vars.size() << " variants at " << ref << " : " << pos << endl;
             assert(vars.size());
             return(true);
+        }
+
+        // ------------------------ "Helper" methods... nothing class-specific, only here to restrict their scope
+
+        static bool is_indel(Variant& var) {
+            // I think the only sure way to tell is if the ref and alt alleles are of different lengths
+            size_t diff_lengths = 0;
+            for (size_t i = 1; i < var.alleles.size(); ++i) 
+                if (var.alleles[0].length() != var.alleles[i].length()) ++diff_lengths;
+            return(diff_lengths > 0);
         }
 
     // end of public: for Class VcfStripmine
@@ -441,13 +451,14 @@ main(int argc, char* argv[])
     // initiate the stripmine, which fetches the first variant from each file
     if (! vcfmine.initiate()) usage("Could not initiate stripmine");
 
-    vcfmine.print();
+    //vcfmine.print();
 
     VcfStripmine::VariantConstPtr_vector vars;
 
     while (vcfmine.get(vars)) {
 
-        // do stuff with the variants in vars[]
+        for (VcfStripmine::VariantConstPtr_vector::const_iterator p = vars.begin(); p != vars.end(); ++p) {
+        }
 
     }
 

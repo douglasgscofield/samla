@@ -25,9 +25,6 @@
 ##FORMAT=<ID=SP,Number=1,Type=Integer,Description="Phred-scaled strand bias P-value">
 ##FORMAT=<ID=PL,Number=G,Type=Integer,Description="List of Phred-scaled genotype likelihoods">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SwAsp006
-scaffold_1	1	.	T	.	41.9	.	DP=4;AF1=0;AC1=0;DP4=4,0,0,0;MQ=10;FQ=-39	PL	0
-scaffold_1	2	.	G	.	41.9	.	DP=4;AF1=0;AC1=0;DP4=4,0,0,0;MQ=10;FQ=-39	PL	0
-scaffold_1	9	.	G	.	45	.	DP=5;AF1=0;AC1=0;DP4=5,0,0,0;MQ=10;FQ=-42	PL	0
 scaffold_1	10	.	A	.	45	.	DP=5;AF1=0;AC1=0;DP4=5,0,0,0;MQ=10;FQ=-42	PL	0
 scaffold_1	56	.	T	.	78	.	DP=16;AF1=0;AC1=0;DP4=11,5,0,0;MQ=33;FQ=-75	PL	0
 scaffold_1	57	.	G	.	84	.	DP=18;AF1=0;AC1=0;DP4=13,5,0,0;MQ=37;FQ=-81	PL	0
