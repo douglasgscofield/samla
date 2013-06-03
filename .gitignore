@@ -3,3 +3,10 @@
 *.swp
 *.vcf.gz
 *.vcf.gz.tbi
+*.dSYM
+*.o
+*.a
+samla
+a.out
+t.cpp
+*.txt
