@@ -346,17 +346,17 @@ class VcfStripmine {
             if (ref.empty()) error_exit("VcfStripmine.get: must call .initiate() before first call to .get()");
             vars.clear();
             if (pos == 0) { 
-                // just initialised, all variants unharvested, at least one variant holds a variant in the reference named in ref
+                // 1+ the_mine[].var hold a variant in reference ref, so returning false here is unlikely
                 if (! find_next_pos())
                     return(false);
             } else {  
-                // need to find a new variant, either on this ref or on the next ref holding a variant
                 refresh_variants();
-                if (! find_next_pos() && ! find_next_pos_new_ref()) {
+                if (! find_next_pos() && ! find_next_pos_new_ref()) {  // must be called in this order
                     return(false);
                 }
             }
-            // at this point, ref and pos have been successfully set to point to the location of the next variant(s)
+            // ref and pos point to the location of the next variant(s); perhaps we should unroll stacked
+            // alternative alleles for each variant? VCF is a pretty flexible format...
             get_at(vars, ref, pos);
             if (DEBUG(1)) cerr << ".get: returning " << vars.size() << " variants at " << ref << " : " << pos << endl;
             assert(vars.size());
