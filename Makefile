@@ -9,28 +9,29 @@ PROG=		samla
 
 LIBS=		-lm -lz
 
-VCFLIB_LIBS=-L../vcflib/ -L../vcflib/tabixpp/ -ltabix
+#VCFLIB_LIBS=-L../vcflib/ -L../vcflib/tabixpp/ -ltabix
+VCFLIB_LIBS=-L../vcflib/tabixpp/ -ltabix
 
 OBJS=		samla.o
 
 HEAD_COMM=  SimpleOpt.h \
-			../vcflib/Variant.h \
-			../vcflib/split.h \
-			../vcflib/join.h
+			../vcflib/src/Variant.h \
+			../vcflib/src/split.h \
+			../vcflib/src/join.h
 
 HEAD=		$(HEAD_COMM)
 
 VCFLIB_AR=	vcflib.a
 
-VCFLIB_OBJS=../vcflib/Variant.o \
-			../vcflib/split.o
+VCFLIB_OBJS=../vcflib/src/Variant.o \
+			../vcflib/src/split.o
 #VCFLIB_OTHER_OBJS=../vcflib/smithwaterman/SmithWatermanGotoh.o \
 #			../vcflib/smithwaterman/Repeats.o \
 #			../vcflib/smithwaterman/disorder.o \
 #			../vcflib/smithwaterman/LeftAlign.o \
 #			../vcflib/smithwaterman/IndelAllele.o \
-#			../vcflib/ssw.o \
-#			../vcflib/ssw_cpp.o \
+#			../vcflib/src/ssw.o \
+#			../vcflib/src/ssw_cpp.o \
 #			../vcflib/fastahack/Fasta.o \
 #			../vcflib/fsom/fsom.o \
 #			../vcflib/tabixpp/tabix.o \
@@ -39,8 +40,8 @@ VCFLIB_OTHER_OBJS=../vcflib/smithwaterman/SmithWatermanGotoh.o \
 			../vcflib/smithwaterman/Repeats.o \
 			../vcflib/smithwaterman/LeftAlign.o \
 			../vcflib/smithwaterman/IndelAllele.o \
-			../vcflib/ssw.o \
-			../vcflib/ssw_cpp.o \
+			../vcflib/src/ssw.o \
+			../vcflib/src/ssw_cpp.o \
 			../vcflib/fastahack/Fasta.o \
 			../vcflib/fsom/fsom.o \
 			../vcflib/tabixpp/tabix.o \

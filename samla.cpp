@@ -27,7 +27,7 @@
 
 // vcflib
 //
-#include "Variant.h"
+#include "src/Variant.h"
 
 // very nice argument handling
 //
