@@ -1,6 +1,7 @@
 .DS_Store
 ._*
 *.swp
+*.vcf
 *.vcf.gz
 *.vcf.gz.tbi
 *.dSYM
