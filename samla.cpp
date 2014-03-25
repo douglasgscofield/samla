@@ -139,7 +139,7 @@ class VcfStripmine {
                 ~VcfStrip(void) {
                     if (is_allocated) {
                         // delete vcf;  // I think this is deleted by delete var below
-                        delete var;  // These statements caused a crash on uppmax
+                        // delete var;  // These statements caused a crash on uppmax
                         //delete last_var;
                     }
                 }
