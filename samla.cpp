@@ -68,9 +68,10 @@ static const size_t max_gwa_window_size = 50;
 static size_t       opt_gwa_window_size = 5;
 static double       opt_gwa_quality = 30.0;
 static bool         opt_stdio = false;
-static int32_t      opt_debug = 1;
-static int32_t      debug_progress = 100000;
-static int64_t      opt_progress = 0; // 1000000;
+static size_t       opt_debug = 1;
+static size_t       debug_progress = 10000;
+static size_t       opt_progress = 0; // 1000000;
+static size_t       num_variants = 0;
 static const char tab = '\t';
 static const string sep = "\t";
 
@@ -137,8 +138,8 @@ class VcfStripmine {
 
                 ~VcfStrip(void) {
                     if (is_allocated) {
-                        delete vcf;
-                        delete var;
+                        // delete vcf;  // I think this is deleted by delete var below
+                        delete var;  // These statements caused a crash on uppmax
                         //delete last_var;
                     }
                 }
@@ -330,6 +331,34 @@ class VcfStripmine {
             }
             if (ref.empty()) 
                 return(false_error(".initiate(): couldn't find variants for any of the supplied references"));
+            // check integrity of sample names: must match up among all VCFs
+            // TODO: do they have to match up when just one sample per file?
+            VariantCallFileConstPtr_vector vcfs;
+            get_files(vcfs);
+            bool is_fatal = false;
+            for (size_t i = 0; i < vcfs.size(); ++i) {
+                if (DEBUG(1)) 
+                    cerr << ".initiate(): " << vcfs[i]->filename << " " << vcfs[i]->sampleNames.size() << " samples:";
+                for (size_t j = 0; j < vcfs[i]->sampleNames.size(); ++j) {
+                    if (vcfs[i]->sampleNames.size() != vcfs[0]->sampleNames.size()) {
+                        cerr << ".initiate(): sample numbers do not match for VCFs: " << vcfs[0]->filename << vcfs[i]->filename << endl;
+                        is_fatal = true;
+                    }
+                    if (vcfs[i]->sampleNames[j] != vcfs[0]->sampleNames[j]) {
+                        cerr << ".initiate(): sample names do not match for VCFs: " << vcfs[0]->filename << vcfs[i]->filename << endl;
+                        is_fatal = true;
+                    }
+                    if (DEBUG(1)) 
+                        cerr << " " << vcfs[i]->sampleNames[j];
+                }
+                if (DEBUG(1)) 
+                    cerr << endl;
+            }
+            if (is_fatal) 
+                return false;
+            if (DEBUG(1)) 
+                cerr << ".initiate(): All sample names match" << endl;
+            // ready to return
             pos = 0;
             assert(! ref.empty() && pos == 0);
             if (DEBUG(3)) 
@@ -734,50 +763,27 @@ main(int argc, char* argv[]) {
     if (! vcfmine.initiate()) 
         exitusage("Could not initiate stripmine");
 
-    //vcfmine.print();
-
-    // check integrity of sample names
-    VcfStripmine::VariantCallFileConstPtr_vector vcfs;
-    if (! vcfmine.get_files(vcfs))
-        exitmessage("must provide VCF files");
-    bool is_fatal = false;
-    for (size_t i = 0; i < vcfs.size(); ++i) {
-        if (DEBUG(1)) 
-            cerr << "main(): " << vcfs[i]->filename << " " << vcfs[i]->sampleNames.size() << " samples:";
-        for (size_t j = 0; j < vcfs[i]->sampleNames.size(); ++j) {
-            if (vcfs[i]->sampleNames.size() != vcfs[0]->sampleNames.size()) {
-                cerr << "*** sample numbers do not match for VCFs: " << vcfs[0]->filename << vcfs[i]->filename << endl;
-                is_fatal = true;
-            }
-            if (vcfs[i]->sampleNames[j] != vcfs[0]->sampleNames[j]) {
-                cerr << "*** sample names do not match for VCFs: " << vcfs[0]->filename << vcfs[i]->filename << endl;
-                is_fatal = true;
-            }
-            if (DEBUG(1)) 
-                cerr << " " << vcfs[i]->sampleNames[j];
-        }
-        if (DEBUG(1)) 
-            cerr << endl;
-    }
-
-    if (is_fatal) 
-        exitmessage("sample inconsistencies");
-
-    if (DEBUG(1)) 
-        cerr << "main(): All sample names match" << endl;
-
     VcfStripmine::VariantConstPtr_vector vars;
+
     while (vcfmine.get(vars)) {
 
-        // for each line of variants in each VCF
+        // for each common set of positions containing variants in one or more VCF
 
-        // Variant:: will check for integrity of sample numbers within each VCF
-        
         if (samla_method == "gwa") {
+
             if (! method_gwa(vars))
                 exitmessage("failure during method_gwa()");
+
         } else {
+
             exitmessage("unknown method '", samla_method, "'");
+
+        }
+
+        ++num_variants;
+        if (opt_progress && (num_variants % opt_progress == 0)) {
+            cerr << NAME "::main(): processed " << num_variants << " positions, last was " 
+                << vars[0]->sequenceName << ":" << vars[0]->position << endl;
         }
 
     }
@@ -804,7 +810,7 @@ Variant method_gwa_case8(Variant& v_Gen, Variant& v_Wga, Variant& v_All);
 // Implement gwa method, see comments below for details
 bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
 
-    bool skip_case = false; // for now
+    bool skip_case = false; // set to true to skip the "easy" cases 7s
 
     Variant v_Gen;
     Variant v_Wga;
@@ -821,7 +827,9 @@ bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
     }
 
     if (DEBUG(2)) {
-        if (skip_case && v_Gen.filter == "." && v_Wga.filter == "." && v_All.filter == ".") {  // issue no variant
+        if (skip_case && v_Gen.filter == "." && v_Gen.alleles[1] == "."
+                      && v_Wga.filter == "." && v_Wga.alleles[1] == "."
+                      && v_All.filter == "." && v_All.alleles[1] == ".") {  // no variants to consider
             return(true);
         }
         if (DEBUG(3)) {
@@ -953,6 +961,13 @@ generate_context_qual(const Variant& v_Gen, const Variant& v_Wga, const Variant&
 }
 
 
+void
+annotate_samla_filter(Variant& v, const string& filter) {
+    v.filter = string("Samla") + filter;
+    v.info["Samla"].push_back(filter);
+}
+
+
 Variant
 method_gwa_case1(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     // 1  Unambiguous SNP call, combine strength from v_Gen and v_Wga.  Start with
@@ -964,9 +979,10 @@ method_gwa_case1(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         exit(1);
     }
     Variant v_ANS(v_All);
-    v_ANS.filter = "SamlaGWA1";
+    annotate_samla_filter(v_ANS, "GWA1");
+    //v_ANS.filter = "SamlaGWA1";
+    //v_ANS.info["Samla"].push_back("GWA1");
     v_ANS.quality = v_Gen.quality + v_Wga.quality;
-    v_ANS.info["Samla"].push_back("GWA1");
     v_ANS.info["Samla"].push_back("Qual_G+W");
     v_ANS.info["Samla"].push_back("Snp_A");
     return(v_ANS);
@@ -996,8 +1012,9 @@ method_gwa_case2(Variant& v_Gen, Variant& v_Wga, Variant& v_All, const char* cas
             v_ANS = v_All;
             v_ANS.info["Samla"].push_back("Snp_A");
         }
-        v_ANS.filter = string("Samla") + nm;
-        v_ANS.info["Samla"].push_back(nm);
+        annotate_samla_filter(v_ANS, nm);
+        //v_ANS.filter = string("Samla") + nm;
+        //v_ANS.info["Samla"].push_back(nm);
         v_ANS.quality = v_Gen.quality + abs(v_Wga.quality - qwin_Wga.mean());
         v_ANS.info["Samla"].push_back("Qual_G+WContext");
     } else if (string(case_name) == "2b") {  // v_Wga is the variant, v_Gen is filtered
@@ -1008,8 +1025,9 @@ method_gwa_case2(Variant& v_Gen, Variant& v_Wga, Variant& v_All, const char* cas
             v_ANS = v_All;
             v_ANS.info["Samla"].push_back("Snp_A");
         }
-        v_ANS.filter = string("Samla") + nm;
-        v_ANS.info["Samla"].push_back(nm);
+        annotate_samla_filter(v_ANS, nm);
+        //v_ANS.filter = string("Samla") + nm;
+        //v_ANS.info["Samla"].push_back(nm);
         v_ANS.quality = abs(v_Gen.quality - qwin_Gen.mean()) + v_Wga.quality;
         v_ANS.info["Samla"].push_back("Qual_W+GContext");
     } else {
@@ -1050,8 +1068,8 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         // v_All does not have a variant, is this good or bad?
         v_ANS = v_All;
-        v_ANS.filter = "SamlaGWA3";
-        v_ANS.info["Samla"].push_back("GWA3");
+        //v_ANS.filter = "SamlaGWA3";
+        //v_ANS.info["Samla"].push_back("GWA3");
         v_ANS.quality = v_Gen.quality + qdelta_Contextual;
         v_ANS.info["Samla"].push_back("Qual_G+Context");
         v_ANS.info["Samla"].push_back("NoSnp_A");
@@ -1061,12 +1079,14 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // contextual quality for both Gen and Wga that passes the quality
             // filter, but we cannot see it because GATK doesn't emit complete
             // information.
+            annotate_samla_filter(v_ANS, "GWA3_UNCALLED_Pass");
             v_ANS.info["Samla"].push_back("PASS_ContextQual");
             v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
         } else if (passedContextualQuality) {  // contextual is inconsistent
+            annotate_samla_filter(v_ANS, "GWA3_UNCALLED_FailInconsistent");
             v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
         } else {  // mixed bag, either contextual is too low or inconsistent
-            v_ANS.filter = "SamlaGWA3";
+            annotate_samla_filter(v_ANS, "GWA3_UNCALLED_FailLowQual");
             v_ANS.info["Samla"].push_back("Fail_ContextQual");
         }
     } else {  
@@ -1074,8 +1094,9 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
             // We accept the v_All variant
             v_ANS = v_All;
-            v_ANS.filter = "SamlaGWA3";
-            v_ANS.info["Samla"].push_back("GWA3");
+            annotate_samla_filter(v_ANS, "GWA3_CALLED_Pass");
+            //v_ANS.filter = "SamlaGWA3";
+            //v_ANS.info["Samla"].push_back("GWA3");
             v_ANS.quality = v_Gen.quality + qdelta_Contextual;
             v_ANS.info["Samla"].push_back("Qual_G+Context");
             v_ANS.info["Samla"].push_back("PASS_ContextQual");
@@ -1083,16 +1104,18 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         } else if (passedContextualQuality) {  // contextual is inconsistent
             // We can't accept the v_All Variant, build on the v_Gen entry
             v_ANS = v_Gen;
-            v_ANS.filter = "SamlaGWA3";
-            v_ANS.info["Samla"].push_back("GWA3");
+            annotate_samla_filter(v_ANS, "GWA3_CALLED_FailInconsistent");
+            //v_ANS.filter = "SamlaGWA3";
+            //v_ANS.info["Samla"].push_back("GWA3");
             v_ANS.quality = v_Gen.quality + qdelta_Contextual;
             v_ANS.info["Samla"].push_back("Qual_G+Context");
             v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
             v_ANS.info["Samla"].push_back("IgnoreSnp_A");
         } else {
             v_ANS = v_Gen;
-            v_ANS.filter = "SamlaGWA3";
-            v_ANS.info["Samla"].push_back("GWA3");
+            annotate_samla_filter(v_ANS, "GWA3_CALLED_FailLowQual");
+            //v_ANS.filter = "SamlaGWA3";
+            //v_ANS.info["Samla"].push_back("GWA3");
             v_ANS.quality = v_Gen.quality + qdelta_Contextual;
             v_ANS.info["Samla"].push_back("Qual_G+Context");
             v_ANS.info["Samla"].push_back("Fail_ContextQual");
@@ -1113,15 +1136,19 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All, const char* cas
     string nm = string("GWA") + case_name;
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = v_All;
+        nm += "_A";
+        annotate_samla_filter(v_ANS, nm);
+        //v_ANS.filter = string("Samla") + nm + "_A";
+        //v_ANS.info["Samla"].push_back(nm);
         v_ANS.quality = v_Gen.quality + v_Wga.quality;
-        v_ANS.filter = string("Samla") + nm;
-        v_ANS.info["Samla"].push_back(nm);
         v_ANS.info["Samla"].push_back("Qual_G+W");
         v_ANS.info["Samla"].push_back("NoSnp_A");
     } else {
         v_ANS = v_Gen;
-        v_ANS.filter = string("Samla") + nm;
-        v_ANS.info["Samla"].push_back(nm);
+        nm += "_G";
+        annotate_samla_filter(v_ANS, nm);
+        //v_ANS.filter = string("Samla") + nm + "_G";
+        //v_ANS.info["Samla"].push_back(nm);
         v_ANS.info["Samla"].push_back("Qual_G");
         v_ANS.info["Samla"].push_back("Snp_G");
         v_ANS.info["Samla"].push_back("IgnoreSnp_A");
@@ -1135,19 +1162,22 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     // 5  SNP in v_Gen and no SNP in v_Wga, accept the v_Gen SNP
     if (DEBUG(2)) cout << "*** case 5 method_gwa_case5()" << endl;
     Variant v_ANS(v_Gen);
-    v_ANS.filter = "SamlaGWA5";
+    annotate_samla_filter(v_ANS, "GWA5");
+    //v_ANS.filter = "SamlaGWA5";
+    //v_ANS.info["Samla"].push_back("GWA5");
     v_ANS.info["Samla"].push_back("Qual_G");
     v_ANS.info["Samla"].push_back("Snp_G");
     return(v_ANS);
 }
-
 
 Variant
 method_gwa_case6(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     // 6  no SNP in v_Gen and SNP in v_Wga, accept the v_Wga SNP
     if (DEBUG(2)) cout << "*** case 6 method_gwa_case6()" << endl;
     Variant v_ANS(v_Wga);
-    v_ANS.filter = "SamlaGWA6";
+    annotate_samla_filter(v_ANS, "GWA6");
+    //v_ANS.filter = "SamlaGWA6";
+    //v_ANS.info["Samla"].push_back("GWA6");
     v_ANS.info["Samla"].push_back("Qual_W");
     v_ANS.info["Samla"].push_back("Snp_W");
     return(v_ANS);
@@ -1157,16 +1187,30 @@ method_gwa_case6(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 Variant
 method_gwa_case7(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     // 7  no SNP in v_Gen and no SNP in v_Wga, no SNP
+    // Favour v_Gen if v_All disagrees
     if (DEBUG(2)) cout << "*** case 7 method_gwa_case7()" << endl;
-    if (v_All.info["VariantType"][0] != "NO_VARIATION") {
-        cerr << "**** strange case 7, v_Gen and v_Wga are '.' but v_All is *not* NO_VARIATION" << endl;
-        exit(1);
+    Variant v_ANS;
+    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+        v_ANS = v_All;
+        annotate_samla_filter(v_ANS, "GWA7_A");
+        //string samla_filter("GWA7_A");
+        //v_ANS.filter = string("Samla") + samla_filter;
+        //v_ANS.info["Samla"].push_back(samla_filter);
+        v_ANS.quality = v_Gen.quality + v_Wga.quality;
+        v_ANS.info["Samla"].push_back("Qual_G+W");
+        v_ANS.info["Samla"].push_back("NoSnp");
+    } else {
+        // cerr << "**** strange case 7, v_Gen and v_Wga are '.' but v_All is *not* NO_VARIATION" << endl;
+        // exit(1);
+        v_ANS = v_Gen;
+        annotate_samla_filter(v_ANS, "GWA7_G");
+        //string samla_filter("GWA7_G");
+        //v_ANS.filter = string("Samla") + samla_filter;
+        //v_ANS.info["Samla"].push_back(samla_filter);
+        v_ANS.info["Samla"].push_back("Qual_G");
+        v_ANS.info["Samla"].push_back("Snp_G");
+        v_ANS.info["Samla"].push_back("IgnoreSnp_A");
     }
-    Variant v_ANS(v_All);
-    v_ANS.filter = "SamlaGWA7";
-    v_ANS.quality = v_Gen.quality + v_Wga.quality;
-    v_ANS.info["Samla"].push_back("Qual_G+W");
-    v_ANS.info["Samla"].push_back("NoSnp");
     return(v_ANS);
 }
 
