@@ -67,6 +67,11 @@ static string       vcf_all;
 static const size_t max_gwa_window_size = 50;
 static size_t       opt_gwa_window_size = 5;
 static double       opt_gwa_quality = 30.0;
+static double       opt_gwa_vqsr_quality = 30.0;
+static double       opt_gwa_lowqual_quality = 30.0;
+static double       opt_gwa_lowqual_quality_ref = 20.0;
+static double       opt_gwa_mixed_quality = 30.0;
+static bool         opt_filter_annotate = true;
 static bool         opt_stdio = false;
 static size_t       opt_debug = 1;
 static size_t       debug_progress = 10000;
@@ -529,12 +534,16 @@ void
 processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
 
     enum { o_references, o_method, 
-           o_vcf_genomic, o_vcf_wga, o_vcf_all, o_gwa_window, o_gwa_quality,
+           o_filter_annotate, o_no_filter_annotate,
+           o_vcf_genomic, o_vcf_wga, o_vcf_all, 
+           o_gwa_window, o_gwa_quality, o_gwa_vqsr_quality, o_gwa_lowqual_quality, o_gwa_lowqual_quality_ref, o_gwa_mixed_quality,
            o_output, o_stdio, o_debug, o_progress, o_help };
 
     CSimpleOpt::SOption smorgas_options[] = {
         { o_references,  "-r",            SO_REQ_SEP },  // file of reference sequence names
         { o_references,  "--references",  SO_REQ_SEP },
+        { o_filter_annotate,    "--filter-annotate",    SO_NONE },
+        { o_no_filter_annotate, "--no-filter-annotate", SO_NONE },
         { o_method,      "-m",            SO_REQ_SEP },  // method for variant combining
         { o_method,      "--method",      SO_REQ_SEP },
 
@@ -544,8 +553,12 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
         { o_vcf_wga,     "-w",            SO_REQ_SEP },
         { o_vcf_all,     "--vcf-all",     SO_REQ_SEP },
         { o_vcf_all,     "-a",            SO_REQ_SEP },
-        { o_gwa_window,  "--gwa-window",  SO_REQ_SEP },
-        { o_gwa_quality, "--gwa-quality",  SO_REQ_SEP },
+        { o_gwa_window,              "--gwa-window",              SO_REQ_SEP },
+        { o_gwa_quality,             "--gwa-quality",             SO_REQ_SEP },
+        { o_gwa_vqsr_quality,        "--gwa-vqsr-quality",        SO_REQ_SEP },
+        { o_gwa_lowqual_quality,     "--gwa-lowqual-quality",     SO_REQ_SEP },
+        { o_gwa_lowqual_quality_ref, "--gwa-lowqual-quality-ref", SO_REQ_SEP },
+        { o_gwa_mixed_quality,       "--gwa-mixed-quality",       SO_REQ_SEP },
 
         { o_output,      "-o",            SO_REQ_SEP },  // output file
         { o_output,      "--output",      SO_REQ_SEP },
@@ -569,6 +582,10 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
                 exitusage(); break;
             case o_references:   
                 references_file = args.OptionArg(); break;
+            case o_filter_annotate:    
+                opt_filter_annotate = true; break;
+            case o_no_filter_annotate:    
+                opt_filter_annotate = false; break;
             case o_method:   
                 samla_method = args.OptionArg(); break;
             case o_vcf_genomic:   
@@ -580,7 +597,18 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
             case o_gwa_window:   
                 opt_gwa_window_size = args.OptionArg() ? atoi(args.OptionArg()) : opt_gwa_window_size; break;
             case o_gwa_quality:   
-                opt_gwa_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_quality; break;
+                opt_gwa_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_quality; 
+                // set all quality threshholds to this value
+                opt_gwa_vqsr_quality = opt_gwa_lowqual_quality = opt_gwa_lowqual_quality_ref = opt_gwa_mixed_quality = opt_gwa_quality;
+                break;
+            case o_gwa_vqsr_quality:   
+                opt_gwa_vqsr_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_vqsr_quality; break;
+            case o_gwa_lowqual_quality:   
+                opt_gwa_lowqual_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_lowqual_quality; break;
+            case o_gwa_lowqual_quality_ref:   
+                opt_gwa_lowqual_quality_ref = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_lowqual_quality_ref; break;
+            case o_gwa_mixed_quality:   
+                opt_gwa_mixed_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_mixed_quality; break;
             case o_output:   
                 output_file = args.OptionArg(); break;
             case o_stdio:    
@@ -662,17 +690,25 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << endl;
     cerr << "NOTE: This command is under active development." << endl;
     cerr << endl;
-    cerr << "     -r FILE | --references FILE  file containing reference names in order [REQUIRED]" << endl;
+    cerr << "     --references FILE            file containing reference names in order [REQUIRED]" << endl;
     cerr << "                                  should be in the same order as the VCF files" << endl;
-    cerr << "     -o FILE | --output FILE      output file name [default is stdout]" << endl;
+    cerr << "     --output FILE                output file name [default is stdout]" << endl;
     cerr << "     --debug INT                  debug info level INT [" << opt_debug << "]" << endl;
     cerr << "     --progress INT               print variants processed mod INT [" << opt_progress << "]" << endl;
-    cerr << "     -m METHOD | --method METHOD  use combining method 'METHOD', only 'gwa' is implemented" << endl;
+    cerr << endl;
+    cerr << "     --filter-annotate            annotate FILTER field with additional method-specific information" << endl;
+    cerr << "     --no-filter-annotate         do not annotate FILTER field, use only PASS and FAIL" << endl;
+    cerr << endl;
+    cerr << "     --method METHOD              use combining method 'METHOD', only 'gwa' is implemented" << endl;
     cerr << endl;
     cerr << "'gwa' method options:" <<endl;
     cerr << endl;
-    cerr << "     --gwa-window INT             lookback window size for mean quality, max " << max_gwa_window_size << "[" << opt_gwa_window_size << "]" << endl;
-    cerr << "     --gwa-quality FLOAT          minimum quality when combining variants [" << opt_gwa_quality << "]" << endl;
+    cerr << "     --gwa-window INT                 lookback window size for mean quality, max " << max_gwa_window_size << "[" << opt_gwa_window_size << "]" << endl;
+    cerr << "     --gwa-quality FLOAT              minimum quality when combining both VQSR and LowQual variants and call does not match reference [" << opt_gwa_quality << "]" << endl;
+    cerr << "     --gwa-vqsr-quality FLOAT         minimum quality when combining VQSR variants [" << opt_gwa_vqsr_quality << "]" << endl;
+    cerr << "     --gwa-lowqual-quality FLOAT      minimum quality when combining LowQual variants and call does not match reference [" << opt_gwa_lowqual_quality << "]" << endl;
+    cerr << "     --gwa-lowqual-quality-ref FLOAT  minimum quality to meet when combining LowQual variants and call matches reference [" << opt_gwa_lowqual_quality_ref << "]" << endl;
+    cerr << "     --gwa-mixed-quality FLOAT        minimum quality when combining VQSR with LowQual variants [" << opt_gwa_mixed_quality << "]" << endl;
     cerr << endl;
     cerr << "For 'gwa', all VCF files must be specified using these options:" << endl;
     cerr << endl;
@@ -792,26 +828,56 @@ main(int argc, char* argv[]) {
 }
 
 // small class looking back to previous values, used for calculating contextual quality
-static LookbackWindow qwin_Gen(max_gwa_window_size, opt_gwa_window_size, 1);
-static LookbackWindow qwin_Wga(max_gwa_window_size, opt_gwa_window_size, 1);
-static LookbackWindow qwin_All(max_gwa_window_size, opt_gwa_window_size, 1);
+static LookbackWindow qualwindow_Gen(max_gwa_window_size, opt_gwa_window_size, 1);
+static LookbackWindow qualwindow_Wga(max_gwa_window_size, opt_gwa_window_size, 1);
+static LookbackWindow qualwindow_All(max_gwa_window_size, opt_gwa_window_size, 1);
+
+Variant method_gwa_case1   (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case2_G (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case2_W (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case3   (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case4   (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case5   (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case6_G (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case6_W (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case7_G (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case7_W (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case8_G (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case8_W (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+Variant method_gwa_case9   (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+
+string
+generate_gwa_qual_string(const Variant& v_Gen, const Variant& v_Wga, const Variant& v_All) {
+    stringstream ss;
+    ss << "G:" << v_Gen.quality << "/" << showpos << (v_Gen.quality - qualwindow_Gen.mean()) << noshowpos << ";";
+    ss << "W:" << v_Wga.quality << "/" << showpos << (v_Wga.quality - qualwindow_Wga.mean()) << noshowpos << ";";
+    ss << "A:" << v_All.quality << "/" << showpos << (v_All.quality - qualwindow_All.mean()) << noshowpos;
+    return(ss.str());
+}
 
 
-Variant method_gwa_case1(Variant& v_Gen, Variant& v_Wga, Variant& v_All);
-Variant method_gwa_case2(Variant& v_Gen, Variant& v_Wga, Variant& v_All, const char* case_name = "2");
-Variant method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All);
-Variant method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All, const char* case_name = "4");
-Variant method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All);
-Variant method_gwa_case6(Variant& v_Gen, Variant& v_Wga, Variant& v_All);
-Variant method_gwa_case7(Variant& v_Gen, Variant& v_Wga, Variant& v_All);
-Variant method_gwa_case8(Variant& v_Gen, Variant& v_Wga, Variant& v_All);
+void
+set_filter(Variant& v, const string& filter) {
+    v.filter = filter;
+    v.info["Samla"].push_back(filter);
+}
 
+void
+annotate_filter(Variant& v, const string& filter) {
+    if (opt_filter_annotate == true) {
+        v.addFilter(string("Samla") + filter);
+    }
+    v.info["Samla"].push_back(filter);
+}
 
 // Implement gwa method, see comments below for details
 bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
 
-    bool skip_case = false; // set to true to skip the "easy" cases 7s
+    bool skip_case = false; // set to true to skip the "easy" cases 9s
 
+    // Make mutable copies of G, W and A variants.  Their order seems to be mixed
+    // up in vars[] more than I thought, so be dynamic about determining which is
+    // which.
     Variant v_Gen;
     Variant v_Wga;
     Variant v_All;
@@ -839,105 +905,98 @@ bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
         }
     }
 
-    qwin_Gen.push(v_Gen.quality);
-    qwin_Wga.push(v_Wga.quality);
-    qwin_All.push(v_All.quality);
+    qualwindow_Gen.push(v_Gen.quality);
+    qualwindow_Wga.push(v_Wga.quality);
+    qualwindow_All.push(v_All.quality);
 
     /* The possible values for col7 FILTER in these VCFs are:
-
-       .                             matches reference
+       .                             matches reference (not always true, this may be set for a called variant too
        LowQual                       low quality but variant seems present
        VQSRTrancheSNP99.00to99.90    low quality just on the edge
        VQSRTrancheSNP99.90to100.00   low quality even juster on the edge
        PASS                          ta-da
-
-       For Genomic, WGA and All libs, if
-
-  ***1  PASS          PASS          x Pass - Combine SNP qualities, get genotypes DP and PL from AllLibs call
-
-     2a PASS          VSQR/LowQual  x Pass - Combine SNP qualities, get genotypes DP and PL from AllLibs call
-     2b VSQR/LowQual  PASS          x Pass - Combine SNP qualities, get genotypes DP and PL from AllLibs call
-     3  VSQR/LowQual  VSQR/LowQual  x Combine SNP qualities and see if pass certain threshold 
-                                      (30 was used in SNPcalling), get genotypes DP and PL from AllLibs call
-     4a VSQR/LowQual  No-call       x If no SNP in AllLibs exclude, if SNP in AllLibs also exclude (only 
-                                      around 2,000 SNPs are like this)
-     4b No-call       VSQR/LowQual  x If no SNP in AllLibs exclude, if SNP in AllLibs also exclude (only
-                                      around 2,000 SNPs are like this)
-     5  PASS          No-call       x Pass - take  SNP qualities and genotypes from file that it PASSes  (maybe 
-                                      there was just no coverage in other - and if it is good enough to Pass in 
-                                      one it should be OK)
-     6  No-call       PASS          x Pass - take  SNP qualities and genotypes from file that it PASSes  (maybe 
-                                      there was just no coverage in other - and if it is good enough to Pass in 
-                                      one it should be OK)
-  ***7  No-call       No-call       x No call
     */
     
     if (DEBUG(2)) cerr << "**G " << v_Gen << endl << "**W " << v_Wga << endl << "**A " << v_All << endl;
 
-    if ((v_Gen.filter == "PASS" || (v_Gen.filter == "." && v_Gen.alleles[1] != "."))  // CASE 1
+    Variant v_ANS;
+
+    if ((v_Gen.filter == "PASS" || (v_Gen.filter == "." && v_Gen.alleles[1] != "."))         // CASE 1
         && 
         (v_Wga.filter == "PASS" || (v_Wga.filter == "." && v_Wga.alleles[1] != "."))) {
 
-        Variant v_ANS(method_gwa_case1(v_Gen, v_Wga, v_All));
-        cout << v_ANS << endl;
+        v_ANS = method_gwa_case1(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "PASS" || (v_Gen.filter == "." && v_Gen.alleles[1] != "."))  // CASE 2a
+    } else if ((v_Gen.filter == "PASS" || (v_Gen.filter == "." && v_Gen.alleles[1] != "."))  // CASE 2_G
                && 
                (v_Wga.filter.substr(0, 4) == "VQSR" || v_Wga.filter == "LowQual")) {
 
-        Variant v_ANS(method_gwa_case2(v_Gen, v_Wga, v_All, "2a"));
-        cout << v_ANS << endl;
+        v_ANS = method_gwa_case2_G(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter.substr(0, 4) == "VQSR" || v_Gen.filter == "LowQual")  // CASE 2b
+    } else if ((v_Gen.filter.substr(0, 4) == "VQSR" || v_Gen.filter == "LowQual")            // CASE 2_W
                && 
                (v_Wga.filter == "PASS" || (v_Wga.filter == "." && v_Wga.alleles[1] != "."))) {
 
-        Variant v_ANS(method_gwa_case2(v_Gen, v_Wga, v_All, "2b"));
-        cout << v_ANS << endl;
+        v_ANS = method_gwa_case2_W(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter.substr(0, 4) == "VQSR" || v_Gen.filter == "LowQual")   // CASE 3
+    } else if (v_Gen.filter.substr(0, 4) == "VQSR" && v_Wga.filter.substr(0, 4) == "VQSR") { // CASE 3
+
+        v_ANS = method_gwa_case3(v_Gen, v_Wga, v_All);
+
+    } else if (v_Gen.filter == "LowQual" && v_Wga.filter == "LowQual") {                    // CASE 4
+
+        v_ANS = method_gwa_case4(v_Gen, v_Wga, v_All);
+
+// must add 5
+    } else if ((v_Gen.filter.substr(0, 4) == "VQSR" && v_Wga.filter == "LowQual")
+               ||
+               (v_Gen.filter == "LowQual" && v_Wga.filter.substr(0, 4) == "VQSR")) {         // CASE 5
+
+        v_ANS = method_gwa_case5(v_Gen, v_Wga, v_All);
+
+    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                     // CASE 6_G
                && 
-               (v_Wga.filter.substr(0, 4) == "VQSR" || v_Wga.filter == "LowQual")) {
+               v_Wga.filter.substr(0, 4) == "VQSR") {
 
-        Variant v_ANS(method_gwa_case3(v_Gen, v_Wga, v_All));
-        cout << v_ANS << endl;
+        v_ANS = method_gwa_case6_G(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                     // CASE 4a
-               && 
-               (v_Wga.filter.substr(0, 4) == "VQSR" || v_Wga.filter == "LowQual")) {
-
-        Variant v_ANS(method_gwa_case4(v_Gen, v_Wga, v_All, "4a"));
-        cout << v_ANS << endl;
-
-    } else if ((v_Gen.filter.substr(0, 4) == "VQSR" || v_Gen.filter == "LowQual")   // CASE 4b
+    } else if (v_Gen.filter.substr(0, 4) == "VQSR"                                  // CASE 6_W
                && 
                (v_Wga.filter == "." && v_Wga.alleles[1] == ".")) {
 
-        Variant v_ANS(method_gwa_case4(v_Gen, v_Wga, v_All, "4b"));
-        cout << v_ANS << endl;
+        v_ANS = method_gwa_case6_W(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "PASS" || (v_Gen.filter == "." && v_Gen.alleles[1] != "."))  // CASE 5
+    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                     // CASE 7_G
+               && 
+               v_Wga.filter == "LowQual") {
+
+        v_ANS = method_gwa_case7_G(v_Gen, v_Wga, v_All);
+
+    } else if (v_Gen.filter == "LowQual"                                            // CASE 7_W
                && 
                (v_Wga.filter == "." && v_Wga.alleles[1] == ".")) {
 
-        Variant v_ANS(method_gwa_case5(v_Gen, v_Wga, v_All));
-        cout << v_ANS << endl;
+        v_ANS = method_gwa_case7_W(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                    // CASE 6
+    } else if ((v_Gen.filter == "PASS" || (v_Gen.filter == "." && v_Gen.alleles[1] != "."))  // CASE 8_G
+               && 
+               (v_Wga.filter == "." && v_Wga.alleles[1] == ".")) {
+
+        v_ANS = method_gwa_case8_G(v_Gen, v_Wga, v_All);
+
+    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                    // CASE 8_W
                && 
                (v_Wga.filter == "PASS" || (v_Wga.filter == "." && v_Wga.alleles[1] != "."))) {
 
-        Variant v_ANS(method_gwa_case6(v_Gen, v_Wga, v_All));
-        cout << v_ANS << endl;
+        v_ANS = method_gwa_case8_W(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                    // CASE 7
+    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                    // CASE 9
                && 
                (v_Wga.filter == "." && v_Wga.alleles[1] == ".")
                && 
                !skip_case) {
 
-        Variant v_ANS(method_gwa_case7(v_Gen, v_Wga, v_All));
-        cout << v_ANS << endl;
+        v_ANS = method_gwa_case9(v_Gen, v_Wga, v_All);
 
     } else {
         cerr << "=================  Unhandled case in method_gwa()" << endl;
@@ -945,153 +1004,459 @@ bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
         cerr << "---" << endl;
         exit(1);
     }
+
+    annotate_filter(v_ANS, generate_gwa_qual_string(v_Gen, v_Wga, v_All));
+
+    cout << v_ANS << endl;
+
     if (DEBUG(2)) cout << "---" << endl;
 
     return(true);
 }
 
+/*********************** Current set of case labels
 
-string
-generate_context_qual(const Variant& v_Gen, const Variant& v_Wga, const Variant& v_All) {
-    stringstream ss;
-    ss << "G:" << showpos << (v_Gen.quality - qwin_Gen.mean()) << ",";
-    ss << "W:" << showpos << (v_Wga.quality - qwin_Wga.mean()) << ",";
-    ss << "A:" << showpos << (v_All.quality - qwin_All.mean());
-    return(ss.str());
-}
+Case 1: Unambiguous variant for G and W.  What is emitted depends on whether A is
+also a variant, and if not which of G and W has the highest quality.  Suffix indicates
+which variant was emitted as the variant (_A, _G, _W).
+
+GWA1_A : G, W, A are variants : Emit A as variant.
+
+    The unambiguous variant A is the emitted variant.  Quality is the summed qualities
+    of G and W.
+
+GWA1_G : G, W are variants, A is *not* a variant : Emit G as variant.
+
+    Since A was not a variant, we choose one of the others to emit.  Quality G
+    >= W so G is the emitted variant.  Quality is quality of G.
+    
+GWA1_W : G, W are variants, A is *not* a variant : Emit W as variant.
+
+    Since A was not a variant, we choose one of the others to emit.  Quality G
+    < W so W is the emitted variant.  Quality is quality of W.
+    
+****
+
+Case 2: Unambiguous variant for one, filtered variant (both VQSR and LowQual)
+for the other.  If A is a variant, it is emitted as the site variant, otherwise
+the unambiguous variant is emitted as the site variant, and quality is the sum
+of the qualities of the unambiguous variant and the contextual quality of the
+other.  Suffix 1 indicates which was the unambiguous variant (_G, _W), suffix 2
+indicates which was used for the emitted variant (_A, _G, _W).
+TODO: does this quality structure make sense?
+
+GWA_2_G_G : G is variant, W is filtered no-variant, A is no-variant : Emit G as variant.
+
+    The unambiguous variant G is the only variant.  Quality is quality of G.
+
+GWA_2_G_A : G is variant, W is filtered no-variant, A is variant : Emit A as variant.
+
+    Both G and A are variants.  Quality is quality of G plus contextual quality of W.
+
+GWA_2_W_W : G is filtered no-variant, W is variant, A is no-variant : Emit W as variant.
+
+    The unambiguous variant W is the only variant.  Quality is quality of W.
+
+GWA_2_W_A : G is filtered no-variant, W is variant, A is variant : Emit A as variant.
+
+    Both W and A are variants.  Quality is quality of W plus contextual quality of G.
+
+****
+
+Case 3: VQSR no-variants for both v_Gen and v_Wga.  What is emitted depends
+on whether the --gwa-vqsr-quality threshold is reached.  Suffix 1 indicates
+which source was used for generating the emitted variant or no-variant (_A, _G,
+_W), suffix 2 indicates what was the result of the quality threshhold filter.
+
+GWA3_A_CALLED_Pass : G and W VQSR no-variant, A *is* variant : Emit A variant
+
+    v_All is variant and the sum of the contextual quality of v_Gen and v_Wga
+    is above --gwa-vqsr-quality, so we emit A as the variant.  Quality is the
+    sum of contextual qualities for G and W.
+
+GWA3_G_CALLED_FailLowQual : G and W VQSR no-variant, A *is* variant : Emit G as no-variant
+
+    v_All is no-variant and the sum of the contextual quality of v_Gen and
+    v_Wga is below --gwa-vqsr-quality, so we do not emit a variant.  The
+    quality of G >= W so emit G as the no-variant.  Quality is the sum of
+    contextual qualities for G and W.
+
+GWA3_W_CALLED_FailLowQual : G and W VQSR no-variant, A *is* variant : Emit W as no-variant
+
+    v_All is no-variant and the sum of the contextual quality of v_Gen and
+    v_Wga is below --gwa-vqsr-quality, so we do not emit a variant.  The
+    quality of G < W so emit W as the no-variant.  Quality is the sum of
+    contextual qualities for G and W.
+
+GWA3_G_CALLED_FailInconsistent : G, W VQSR no-variant, A *is* variant : Emit G as no-variant
+
+    v_All is variant and the contextual qualities for v_Gen and v_Wga have
+    opposite signs, so are not in concert in indicating there is evidence for
+    an uncalled variant.  Quality of G >= W so emit G as the no-variant.
+    Quality is the sum of contextual qualities for G and W.
+
+GWA3_W_CALLED_FailInconsistent : G, W VQSR no-variant, A *is* variant : Emit W as no-variant
+
+    v_All is variant and the contextual qualities for v_Gen and v_Wga have
+    opposite signs, so are not in concert in indicating there is evidence for
+    an uncalled variant.  Quality of G < W so emit W as the no-variant.
+    Quality is the sum of contextual qualities for G and W.
+
+GWA3_A_UNCALLED_Fail : G, W VQSR no-variant, A no-variant but there should be a variant: Emit A as no-variant
+
+    v_All is no-variant but the sum of the contextual quality of v_Gen and v_Wga
+    is above --gwa-vqsr-quality, so we *should* be emitting a variant but we can't
+    because v_All doesn't contain any variant information.  Quality is sum of
+    contextual qualities for G and W.
+
+GWA3_A_UNCALLED_FailLowQual : G, W VQSR no-variant, A no-variant : Emit no variant
+
+    v_All is no-variant and the sum of the contextual quality of v_Gen and v_Wga
+    is below --gwa-vqsr-quality, so we do not emit a variant.  Quality is sum of
+    contextual qualities for G and W.
+
+GWA3_A_UNCALLED_FailInconsistent : G, W VQSR no-variant, A no-variant : Emit no variant
+
+    v_All is no-variant and the contextual qualities for v_Gen and v_Wga have
+    opposite signs, so are not in concert in indicating there is evidence for
+    an uncalled variant.  Quality is sum of contextual qualities for G and W.
+
+****
+
+Case 4: Nearly identical to case 3 but with LowQual no-variants rather than
+VQSR no-variants.  LowQual no-variants for both v_Gen and v_Wga.  What is emitted
+depends on whether the --gwa-lowqual-quality threshold is reached.  Suffix 1
+indicates which source was used for generating the emitted variant or
+no-variant (_A, _G, _W), suffix 2 indicates what was the result of the quality
+threshhold filter.
+
+Cases below are identical to those for case 3, with GWA4 replacing GWA3, LowQual
+replacing VQSR, and --gwa-lowqual-quality replacing --gwa-vqsr-quality.
+
+The exceptions to this is three new cases having to do with testing against
+--gwa-lowqual-quality-ref, when we think the position should match the reference.
+
+GWA4_A_CALLED_Pass : G and W LowQual no-variant, A *is* variant : Emit A variant
+
+GWA4_G_CALLED_Fail_QualityRef : G, W LowQual no-variant, A *is* variant : Emit G as no-variant
+
+    A is called as a variant but we think this is a mistake, because we fail contextual
+    quality but pass G quality + W quality >= gwa-lowqual-quality-ref.  We emit G as the
+    no-variant because for quality G >= W, with quality G + W
+
+GWA4_W_CALLED_Fail_QualityRef : G, W LowQual no-variant, A *is* variant : Emit W as no-variant
+
+    A is called as a variant but we think this is a mistake, because we fail contextual
+    quality but pass G quality + W quality >= gwa-lowqual-quality-ref.  We emit W as the
+    no-variant because for quality G < W, with quality G + W
+
+GWA4_G_CALLED_FailLowQual : G and W LowQual no-variant, A *is* variant : Emit G as no-variant
+
+GWA4_W_CALLED_FailLowQual : G and W LowQual no-variant, A *is* variant : Emit W as no-variant
+
+GWA4_G_CALLED_FailInconsistent : G, W LowQual no-variant, A *is* variant : Emit G as no-variant
+
+GWA4_W_CALLED_FailInconsistent : G, W LowQual no-variant, A *is* variant : Emit W as no-variant
+
+GWA4_A_UNCALLED_Pass_QualityRef : G, W LowQual, A no-variant : Emit A as no-variant
+
+    A is not a variant and we fail contextual quality (thus we don't think we
+    are missing a variant, as for GWA4_A_UNCALLED_Fail), so we think we actually
+    match the reference, as we have enough strength for G quality + W quality 
+    >= gwa-lowqual-quality-ref, with quality G + W
+
+GWA4_A_UNCALLED_Fail : G, W LowQual no-variant, A no-variant but there should be a variant: Emit A as no-variant
+
+GWA4_A_UNCALLED_FailLowQual : G, W LowQual no-variant, A no-variant : Emit no variant
+
+GWA4_A_UNCALLED_FailInconsistent : G, W LowQual no-variant, A no-variant : Emit no variant
+
+****
+
+Case 5: Nearly identical to case 3 but with mixed VQSR and LowQual no-variants
+rather than just VQSR or LowQual no-variants.  In either case, there are
+no-variants for both v_Gen and v_Wga.  What is emitted depends on whether the
+--gwa-mixed-quality threshold is reached.  Suffix 1 indicates which source was
+used for generating the emitted variant or no-variant (_A, _G, _W), suffix 2
+indicates what was the result of the quality threshhold filter.  Because the
+quality of VQSR calls tends to be higher, those will be favoured if A is not
+a no-variant.
+
+Cases below are identical to those for case 3, with GWA5 replacing GWA3,
+'LowQual/VQSR' replacing VQSR, and --gwa-mixed-quality replacing
+--gwa-vqsr-quality.
+
+GWA5_A_CALLED_Pass : G and W LowQual/VQSR no-variant, A *is* variant : Emit A variant
+
+GWA5_G_CALLED_FailLowQual : G and W LowQual/VQSR no-variant, A *is* variant : Emit G as no-variant
+
+GWA5_W_CALLED_FailLowQual : G and W LowQual/VQSR no-variant, A *is* variant : Emit W as no-variant
+
+GWA5_G_CALLED_FailInconsistent : G, W LowQual/VQSR no-variant, A *is* variant : Emit G as no-variant
+
+GWA5_W_CALLED_FailInconsistent : G, W LowQual/VQSR no-variant, A *is* variant : Emit W as no-variant
+
+GWA5_A_UNCALLED_Fail : G, W LowQual/VQSR no-variant, A no-variant but there should be a variant: Emit A as no-variant
+
+GWA5_A_UNCALLED_FailLowQual : G, W LowQual/VQSR no-variant, A no-variant : Emit no variant
+
+GWA5_A_UNCALLED_FailInconsistent : G, W LowQual/VQSR no-variant, A no-variant : Emit no variant
+
+****
+
+Case 6: No variant in one, VQSR-filtered variant in the other.  Emit no
+variant.  Suffix 1 based on which variant was no-variant (_G, _W) and suffix 2
+which variant was used for the basis of the emitted no-variant (_A, _G, _W).
+ 
+GWA6_G_A  : G no-variant, W VQSR, A emitted : Emit no variant
+
+    v_All is no-variant so use v_All as emitted no-variant.  Quality is
+    v_Gen.quality+v_Wga.quality.
+
+GWA6_G_G  : G no-variant, W VQSR, G emitted : Emit no variant
+
+    v_All *is* a variant, v_Gen quality >= v_Wga quality so use v_Gen as
+    emitted no-variant. Quality is v_Gen.quality.
+
+GWA6_G_W  : G no-variant, W VQSR, W emitted : Emit no variant
+
+    v_All *is* a variant, v_Gen quality < v_Wga quality so use v_Wga as emitted
+    no-variant.  Quality is v_Wga.quality.
+
+GWA6_W_A  : G VQSR, W no-variant, A emitted : Emit no variant
+
+    v_All is no-variant so use v_All as emitted no-variant.  Quality is
+    v_Gen.quality+v_Wga.quality.
+
+GWA6_W_G  : G VQSR, W no-variant, G emitted : Emit no variant
+
+    v_All *is* a variant, v_Gen quality >= v_Wga quality so use v_Gen as
+    emitted no-variant. Quality is v_Gen.quality.
+
+GWA6_W_W  : G VQSR, W no-variant, W emitted : Emit no variant
+
+    v_All *is* a variant, v_Gen quality < v_Wga quality so use v_Wga as emitted
+    no-variant.  Quality is v_Wga.quality.
+
+****
+
+Case 7: No variant in one, LowQual-filtered variant in the other.  Emit no
+variant.  As for case 6, suffix 1 based on which variant was no-variant (_G,
+_W) and suffix 2 which variant was used for the basis of the emitted no-variant
+(_A, _G, _W).
+ 
+GWA7_G_A  : G no-variant, W LowQual, A emitted : Emit no variant
+
+    v_All is no-variant so use v_All as emitted no-variant.  Quality is
+    v_Gen.quality+v_Wga.quality.
+
+GWA7_G_G  : G no-variant, W LowQual, G emitted : Emit no variant
+
+    v_All *is* a variant, v_Gen quality >= v_Wga quality so use v_Gen as
+    emitted no-variant. Quality is v_Gen.quality.
+
+GWA7_G_W  : G no-variant, W LowQual, W emitted : Emit no variant
+
+    v_All *is* a variant, v_Gen quality < v_Wga quality so use v_Wga as emitted
+    no-variant.  Quality is v_Wga.quality.
+
+GWA7_W_A  : G LowQual, W no-variant, A emitted : Emit no variant
+
+    v_All is no-variant so use v_All as emitted no-variant.  Quality is
+    v_Gen.quality+v_Wga.quality.
+
+GWA7_W_G  : G LowQual, W no-variant, G emitted : Emit no variant
+
+    v_All *is* a variant, v_Gen quality >= v_Wga quality so use v_Gen as
+    emitted no-variant. Quality is v_Gen.quality.
+
+GWA7_W_W  : G LowQual, W no-variant, W emitted : Emit no variant
+
+    v_All *is* a variant, v_Gen quality < v_Wga quality so use v_Wga as emitted
+    no-variant.  Quality is v_Wga.quality.
+
+****
+
+Case 8: Variant in one, no-variant in the other.  Emit the one with the variant.
+Suffix indicate which was the variant (_G, _W).
+
+GWA8_G  : G variant, W no-variant, G emitted : Emit G variant
+
+    v_Gen is emitted variant.  Quality is v_Gen.quality.
+
+GWA8_W  : G no-variant, W LowQual, W emitted : Emit W variant
+
+    v_Wga is emitted variant.  Quality is v_Wga.quality.
+
+****
+
+Case 9: No-variant in both.  Emit the highest-quality no-variant.  Suffix
+indicates which no-variant was the best (_A, _G, _W).
+
+GWA9_A  : G no-variant, W no-variant, A no-variant, A emitted : Emit A no-variant
+
+    v_All is emitted variant.  Quality is v_Gen.quality+v_Wga.quality.
+
+GWA9_G  : G no-variant, W no-variant, A *is* variant, G emitted : Emit G no-variant
+
+    v_All *is* a variant, v_Gen quality >= v_Wga quality so v_Gen is emitted
+    variant.  Quality is v_Gen.quality.  Probably very rare.
+
+GWA9_W  : G no-variant, W no-variant, A *is* variant, W emitted : Emit W no-variant
+
+    v_All *is* a variant, v_Gen quality < v_Wga quality so v_Wga is emitted
+    variant.  Quality is v_Wga.quality.  Probably very rare.
 
 
-void
-annotate_samla_filter(Variant& v, const string& filter) {
-    v.filter = string("Samla") + filter;
-    v.info["Samla"].push_back(filter);
-}
+ **************************/
+
+
+// -------- 1  Unambiguous SNP call for both v_Gen and v_Wga
 
 
 Variant
 method_gwa_case1(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
-    // 1  Unambiguous SNP call, combine strength from v_Gen and v_Wga.  Start with
-    // v_All, genotypes and info stats are good, but adjust variant quality to be the
-    // sum of v_Gen and v_Wga
+    // Combine strength from v_Gen and v_Wga.  Start with v_All, genotypes and
+    // info stats are good, but adjust variant quality to be the sum of v_Gen
+    // and v_Wga
     if (DEBUG(2)) cout << "*** case 1 method_gwa_case1()" << endl;
     Variant v_ANS;
     if (v_All.info["VariantType"][0] != "NO_VARIATION") {
         v_ANS = v_All;
-        annotate_samla_filter(v_ANS, "GWA1_A");
+        set_filter(v_ANS, "PASS");
+        annotate_filter(v_ANS, "GWA1_A");
         v_ANS.quality = v_Gen.quality + v_Wga.quality;
         v_ANS.info["Samla"].push_back("Qual_G+W");
         v_ANS.info["Samla"].push_back("Snp_A");
     } else {
-        //cerr << "**** strange case 1, v_Gen and v_Wga are PASS but v_All is not" << endl;
-        //exit(1);
         if (v_Gen.quality >= v_Wga.quality) { // favour v_Gen
             v_ANS = v_Gen;  // using quality from v_Gen
-            annotate_samla_filter(v_ANS, "GWA1_G");
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA1_G");
             v_ANS.info["Samla"].push_back("Qual_G");
             v_ANS.info["Samla"].push_back("Snp_G");
         } else {  // v_Gen.quality < v_Wga.quality, so favour v_Wga
             v_ANS = v_Wga;  // using quality from v_Wga
-            annotate_samla_filter(v_ANS, "GWA1_W");
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA1_W");
             v_ANS.info["Samla"].push_back("Qual_W");
             v_ANS.info["Samla"].push_back("Snp_W");
         }
+        if (DEBUG(2)) {
+            cerr << "**1* strange case 1, v_Gen and v_Wga are PASS but v_All is not" << endl;
+            cerr << "**1* G " << v_Gen << endl << "**1* W " << v_Wga << endl << "**1* A " << v_All << endl;
+        }
     }
     return(v_ANS);
 }
+
+
+// -------- 2_G  Unambiguous SNP call for v_Gen, filtered for v_Wga
 
 
 Variant
-method_gwa_case2(Variant& v_Gen, Variant& v_Wga, Variant& v_All, const char* case_name) {
-
-    // 2  Unambiguous SNP call for one, filtered for the other. Combine strength from 
-    // both, using straight quality for the variant and contextual quality for
-    // the filtered one.
-    //
-    // A corner case could be that v_All doesn't contain a variant for us to
-    // pull info from.  When this happens, pull the output from the one that has the
-    // SNP call and add the contextual quality from the other...
-
-    if (DEBUG(2)) cout << "*** case 2 method_gwa_case2()" << endl;
-
-    string nm = string("GWA") + case_name;
+method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+    // Combine strength from both, using straight quality for the variant and
+    // contextual quality for the filtered one.
+    if (DEBUG(2)) cout << "*** case 2_G method_gwa_case2_G()" << endl;
     Variant v_ANS;
-    if (string(case_name) == "2a") { // v_Gen is the variant, v_Wga is filtered
-        if (v_All.info["VariantType"][0] == "NO_VARIATION") {
-            v_ANS = v_Gen;
-            v_ANS.info["Samla"].push_back("Snp_G");
-        } else {
-            v_ANS = v_All;
-            v_ANS.info["Samla"].push_back("Snp_A");
+    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+        v_ANS = v_Gen;
+        set_filter(v_ANS, "PASS");
+        annotate_filter(v_ANS, "GWA2_G_G");
+        v_ANS.info["Samla"].push_back("Snp_G");
+        if (DEBUG(2)) {
+            cerr << "**2_G* v_Gen is PASS with other filtered but v_All is not a variant" << endl;
+            cerr << "**2_G* G " << v_Gen << endl << "**2_G* W " << v_Wga << endl << "**2_G* A " << v_All << endl;
         }
-        annotate_samla_filter(v_ANS, nm);
-        v_ANS.quality = v_Gen.quality + abs(v_Wga.quality - qwin_Wga.mean());
-        v_ANS.info["Samla"].push_back("Qual_G+WContext");
-    } else if (string(case_name) == "2b") {  // v_Wga is the variant, v_Gen is filtered
-        if (v_All.info["VariantType"][0] == "NO_VARIATION") {
-            v_ANS = v_Wga;
-            v_ANS.info["Samla"].push_back("Snp_W");
-        } else {
-            v_ANS = v_All;
-            v_ANS.info["Samla"].push_back("Snp_A");
-        }
-        annotate_samla_filter(v_ANS, nm);
-        v_ANS.quality = abs(v_Gen.quality - qwin_Gen.mean()) + v_Wga.quality;
-        v_ANS.info["Samla"].push_back("Qual_W+GContext");
     } else {
-        cerr << "method_gwa_case2(): Unhandled case_name " << case_name << endl;
+        v_ANS = v_All;
+        set_filter(v_ANS, "PASS");
+        annotate_filter(v_ANS, "GWA2_G_A");
+        v_ANS.info["Samla"].push_back("Snp_A");
     }
-    v_ANS.info["SamlaContextQual"].push_back(generate_context_qual(v_Gen, v_Wga, v_All));
-    if (DEBUG(2) && v_All.info["VariantType"][0] == "NO_VARIATION") {
-        cerr << "**** unusual case 2, v_Gen and/or v_Wga are PASS with other filtered but v_All is not a variant" << endl;
-        cerr << "**** G " << v_Gen << endl << "**** W " << v_Wga << endl << "**** A " << v_All << endl;
-        cerr << "**** S " << v_ANS << endl;
-    }
+    v_ANS.quality = v_Gen.quality + abs(v_Wga.quality - qualwindow_Wga.mean());
+    v_ANS.info["Samla"].push_back("Qual_G+WContext");
     return(v_ANS);
 }
+
+
+// -------- 2_W  Unambiguous SNP call for v_Wga, filtered for v_Gen
+
+
+Variant
+method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+    // Combine strength from both, using straight quality for the variant and
+    // contextual quality for the filtered one.
+    if (DEBUG(2)) cout << "*** case 2_W method_gwa_case2_W()" << endl;
+    Variant v_ANS;
+    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+        v_ANS = v_Wga;
+        set_filter(v_ANS, "PASS");
+        annotate_filter(v_ANS, "GWA2_W_W");
+        v_ANS.info["Samla"].push_back("Snp_W");
+        if (DEBUG(2)) {
+            cerr << "**2_W** v_Wga is PASS with other filtered but v_All is not a variant" << endl;
+            cerr << "**2_W** G " << v_Gen << endl << "**2_W** W " << v_Wga << endl << "**2_W** A " << v_All << endl;
+        }
+    } else {
+        v_ANS = v_All;
+        set_filter(v_ANS, "PASS");
+        annotate_filter(v_ANS, "GWA2_W_A");
+        v_ANS.info["Samla"].push_back("Snp_A");
+    }
+    v_ANS.quality = abs(v_Gen.quality - qualwindow_Gen.mean()) + v_Wga.quality;
+    v_ANS.info["Samla"].push_back("Qual_W+GContext");
+    return(v_ANS);
+}
+
+
+// -------- 3  VQSR genotypes for both v_Gen and v_Wga, so do we pass a threshold to emit a genotype?
 
 
 Variant
 method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
-    // 3  Low-qual genotypes for v_Gen and v_Wga, so do we pass a threshold to emit a genotype?
     if (DEBUG(2)) cout << "*** case 3 method_gwa_case3()" << endl;
     Variant v_ANS;
     if (DEBUG(3)) {
-        cerr << "G "; qwin_Gen.dump(10, 1);
-        cerr << "W "; qwin_Wga.dump(10, 1);
-        cerr << "A "; qwin_All.dump(10, 1);
+        cerr << "G "; qualwindow_Gen.dump(10, 1);
+        cerr << "W "; qualwindow_Wga.dump(10, 1);
+        cerr << "A "; qualwindow_All.dump(10, 1);
     }
-    double qdelta_Gen = (v_Gen.quality - qwin_Gen.mean());
-    double qdelta_Wga = (v_Wga.quality - qwin_Wga.mean());
-    double qdelta_All = (v_All.quality - qwin_All.mean());
+    double qdelta_Gen = (v_Gen.quality - qualwindow_Gen.mean());
+    double qdelta_Wga = (v_Wga.quality - qualwindow_Wga.mean());
+    double qdelta_All = (v_All.quality - qualwindow_All.mean());
     double qdelta_Contextual = abs(qdelta_Gen) + abs(qdelta_Wga);
-    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_quality);
+    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_vqsr_quality);
     if (DEBUG(1)) {
-        fprintf(stderr, "G quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Gen.quality, qwin_Gen.mean(), qdelta_Gen);
-        fprintf(stderr, "W quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Wga.quality, qwin_Wga.mean(), qdelta_Wga);
-        fprintf(stderr, "A quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_All.quality, qwin_All.mean(), qdelta_All);
-        fprintf(stderr, "                  Contextual abs(G)+abs(W) quality delta: %9.4f ", qdelta_Contextual);
-        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-quality=" << opt_gwa_quality << endl;
+        fprintf(stderr, "3 G quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen);
+        fprintf(stderr, "3 W quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga);
+        fprintf(stderr, "3 A quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
+        fprintf(stderr, "3                   Contextual abs(G)+abs(W) quality delta: %9.4f ", qdelta_Contextual);
+        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-vqsr-quality=" << opt_gwa_vqsr_quality << endl;
     }
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         // v_All does not have a variant, is this good or bad?
         v_ANS = v_All;
-        v_ANS.quality = v_Gen.quality + qdelta_Contextual;
-        v_ANS.info["Samla"].push_back("Qual_G+Context");
+        v_ANS.quality = qdelta_Contextual;
+        v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
         v_ANS.info["Samla"].push_back("NoSnp_A");
-        // In all cases our quality is v_Gen + qdelta_Contextual
         if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
             // We think there should be a variant here, because of the drop in
             // contextual quality for both Gen and Wga that passes the quality
             // filter, but we cannot see it because GATK doesn't emit complete
             // information.
-            annotate_samla_filter(v_ANS, "GWA3_UNCALLED_Pass");
+            set_filter(v_ANS, "FAIL");
+            annotate_filter(v_ANS, "GWA3_A_UNCALLED_Fail");
             v_ANS.info["Samla"].push_back("PASS_ContextQual");
             v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
         } else if (passedContextualQuality) {  // contextual is inconsistent
-            annotate_samla_filter(v_ANS, "GWA3_UNCALLED_FailInconsistent");
+            set_filter(v_ANS, "FAIL");
+            annotate_filter(v_ANS, "GWA3_A_UNCALLED_FailInconsistent");
             v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
         } else {  // mixed bag, either contextual is too low or inconsistent
-            annotate_samla_filter(v_ANS, "GWA3_UNCALLED_FailLowQual");
+            set_filter(v_ANS, "FAIL");
+            annotate_filter(v_ANS, "GWA3_A_UNCALLED_FailLowQual");
             v_ANS.info["Samla"].push_back("Fail_ContextQual");
         }
     } else {  
@@ -1099,102 +1464,499 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
             // We accept the v_All variant
             v_ANS = v_All;
-            annotate_samla_filter(v_ANS, "GWA3_CALLED_Pass");
-            v_ANS.quality = v_Gen.quality + qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_G+Context");
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA3_A_CALLED_Pass");
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
             v_ANS.info["Samla"].push_back("PASS_ContextQual");
             v_ANS.info["Samla"].push_back("AcceptSnp_A");
         } else if (passedContextualQuality) {  // contextual is inconsistent
-            // We can't accept the v_All Variant, build on the v_Gen entry
-            v_ANS = v_Gen;
-            annotate_samla_filter(v_ANS, "GWA3_CALLED_FailInconsistent");
-            v_ANS.quality = v_Gen.quality + qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_G+Context");
+            // We can't accept the v_All Variant, build on the entry with higher quality
+            if (v_Gen.quality >= v_Wga.quality) {
+                v_ANS = v_Gen;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA3_G_CALLED_FailInconsistent");
+            } else {
+                v_ANS = v_Wga;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA3_W_CALLED_FailInconsistent");
+            }
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
             v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
             v_ANS.info["Samla"].push_back("IgnoreSnp_A");
         } else {
-            v_ANS = v_Gen;
-            annotate_samla_filter(v_ANS, "GWA3_CALLED_FailLowQual");
-            v_ANS.quality = v_Gen.quality + qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_G+Context");
+            // We can't accept the v_All Variant, build on the entry with higher quality
+            if (v_Gen.quality >= v_Wga.quality) {
+                v_ANS = v_Gen;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA3_G_CALLED_FailLowQual");
+            } else {
+                v_ANS = v_Wga;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA3_W_CALLED_FailLowQual");
+            }
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
             v_ANS.info["Samla"].push_back("Fail_ContextQual");
             v_ANS.info["Samla"].push_back("IgnoreSnp_A");
         }
     }
-    v_ANS.info["SamlaContextQual"].push_back(generate_context_qual(v_Gen, v_Wga, v_All));
+    v_ANS.info["SamlaContextQual"].push_back(generate_gwa_qual_string(v_Gen, v_Wga, v_All));
     return(v_ANS);
 }
 
 
+// -------- 4  LowQual genotypes for both v_Gen and v_Wga, so do we pass a threshold to emit a genotype?
+// TODO: combine with case 3 but parameterise it using case name and opt_gwa_*_quality, unless
+// we think we will do more specific stuff for cases 3 and/or 4?
+
+
 Variant
-method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All, const char* case_name) {
-    // 4  No SNP in v_Gen and VQSR/LowQual in WGA, emit no SNP (despite what v_All might show)
-    // Favour v_Gen if v_All disagrees
+method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 4 method_gwa_case4()" << endl;
     Variant v_ANS;
-    string nm = string("GWA") + case_name;
+    if (DEBUG(3)) {
+        cerr << "G "; qualwindow_Gen.dump(10, 1);
+        cerr << "W "; qualwindow_Wga.dump(10, 1);
+        cerr << "A "; qualwindow_All.dump(10, 1);
+    }
+    double qdelta_Gen = (v_Gen.quality - qualwindow_Gen.mean());
+    double qdelta_Wga = (v_Wga.quality - qualwindow_Wga.mean());
+    double qdelta_All = (v_All.quality - qualwindow_All.mean());
+    double qdelta_Contextual = abs(qdelta_Gen) + abs(qdelta_Wga);
+    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_lowqual_quality);
+    bool   passedQualityRef = (v_Gen.quality + v_Wga.quality >= opt_gwa_lowqual_quality_ref);
+    if (DEBUG(1)) {
+        fprintf(stderr, "4 G quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen);
+        fprintf(stderr, "4 W quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga);
+        fprintf(stderr, "4 A quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
+        fprintf(stderr, "4                   Contextual abs(G)+abs(W) quality delta: %9.4f ", qdelta_Contextual);
+        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-lowqual-quality=" << opt_gwa_lowqual_quality << endl;
+    }
+    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+        // v_All does not have a variant, is this good or bad?
+        v_ANS = v_All;
+        v_ANS.info["Samla"].push_back("NoSnp_A");
+        if (! passedContextualQuality && passedQualityRef) {
+            // We do not think we have a variant here, we think we should match the reference
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA4_A_UNCALLED_Pass_QualityRef");
+            v_ANS.quality = v_Gen.quality + v_Wga.quality;
+            v_ANS.info["Samla"].push_back("Qual_G+W");
+            v_ANS.info["Samla"].push_back("PASS_QualityRef");
+        } else if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
+            // We think there should be a variant here, because of the drop in
+            // contextual quality for both Gen and Wga that passes the quality
+            // filter, but we cannot see it because GATK doesn't emit complete
+            // information.
+            set_filter(v_ANS, "FAIL");
+            annotate_filter(v_ANS, "GWA4_A_UNCALLED_Fail");
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("PASS_ContextQual");
+            v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
+        } else if (passedContextualQuality) {  // contextual is inconsistent
+            set_filter(v_ANS, "FAIL");
+            annotate_filter(v_ANS, "GWA4_A_UNCALLED_FailInconsistent");
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
+        } else {  // mixed bag, either contextual is too low or inconsistent
+            set_filter(v_ANS, "FAIL");
+            annotate_filter(v_ANS, "GWA4_A_UNCALLED_FailLowQual");
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("Fail_ContextQual");
+        }
+    } else {  
+        // v_All has a variant, but we don't yet know if we accept it
+        if (! passedContextualQuality && passedQualityRef) {
+            // We think we should actually match the reference
+            if (v_Gen.quality >= v_Wga.quality) {
+                v_ANS = v_Gen;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA4_G_CALLED_Fail_QualityRef");
+                v_ANS.info["Samla"].push_back("NoSnp_G");
+            } else {
+                v_ANS = v_Wga;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA4_W_CALLED_Fail_QualityRef");
+                v_ANS.info["Samla"].push_back("NoSnp_W");
+            }
+            v_ANS.info["Samla"].push_back("FAIL_QualityRef");
+            v_ANS.quality = v_Gen.quality + v_Wga.quality;
+            v_ANS.info["Samla"].push_back("Qual_G+W");
+            v_ANS.info["Samla"].push_back("RejectSnp_A");
+        } else if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
+            // We accept the v_All variant
+            v_ANS = v_All;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA4_A_CALLED_Pass");
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("PASS_ContextQual");
+            v_ANS.info["Samla"].push_back("AcceptSnp_A");
+        } else if (passedContextualQuality) {  // contextual is inconsistent
+            // We can't accept the v_All Variant, build on the entry with higher quality
+            if (v_Gen.quality >= v_Wga.quality) {
+                v_ANS = v_Gen;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA4_G_CALLED_FailInconsistent");
+            } else {
+                v_ANS = v_Wga;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA4_W_CALLED_FailInconsistent");
+            }
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
+            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        } else {
+            // We can't accept the v_All Variant, build on the entry with higher quality
+            if (v_Gen.quality >= v_Wga.quality) {
+                v_ANS = v_Gen;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA4_G_CALLED_FailLowQual");
+            } else {
+                v_ANS = v_Wga;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA4_W_CALLED_FailLowQual");
+            }
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("Fail_ContextQual");
+            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        }
+    }
+    v_ANS.info["SamlaContextQual"].push_back(generate_gwa_qual_string(v_Gen, v_Wga, v_All));
+    return(v_ANS);
+}
+
+
+// -------- 5  VQSR filter for one of v_Gen or v_Wga and LowQual for the other, so do we pass a threshold to emit a genotype?
+
+
+Variant
+method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+    if (DEBUG(2)) cout << "*** case 5 method_gwa_case5()" << endl;
+    Variant v_ANS;
+    if (DEBUG(3)) {
+        cerr << "G "; qualwindow_Gen.dump(10, 1);
+        cerr << "W "; qualwindow_Wga.dump(10, 1);
+        cerr << "A "; qualwindow_All.dump(10, 1);
+    }
+    double qdelta_Gen = (v_Gen.quality - qualwindow_Gen.mean());
+    double qdelta_Wga = (v_Wga.quality - qualwindow_Wga.mean());
+    double qdelta_All = (v_All.quality - qualwindow_All.mean());
+    double qdelta_Contextual = abs(qdelta_Gen) + abs(qdelta_Wga);
+    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_mixed_quality);
+    if (DEBUG(1)) {
+        fprintf(stderr, "5 G quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen);
+        fprintf(stderr, "5 W quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga);
+        fprintf(stderr, "5 A quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
+        fprintf(stderr, "5                   Contextual abs(G)+abs(W) quality delta: %9.4f ", qdelta_Contextual);
+        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-mixed-quality=" << opt_gwa_mixed_quality << endl;
+    }
+    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+        // v_All does not have a variant, is this good or bad?
+        v_ANS = v_All;
+        v_ANS.quality = qdelta_Contextual;
+        v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+        v_ANS.info["Samla"].push_back("NoSnp_A");
+        if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
+            // We think there should be a variant here, because of the drop in
+            // contextual quality for both Gen and Wga that passes the quality
+            // filter, but we cannot see it because GATK doesn't emit complete
+            // information.
+            set_filter(v_ANS, "FAIL");
+            annotate_filter(v_ANS, "GWA5_A_UNCALLED_Fail");
+            v_ANS.info["Samla"].push_back("PASS_ContextQual");
+            v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
+        } else if (passedContextualQuality) {  // contextual is inconsistent
+            set_filter(v_ANS, "FAIL");
+            annotate_filter(v_ANS, "GWA5_A_UNCALLED_FailInconsistent");
+            v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
+        } else {  // mixed bag, either contextual is too low or inconsistent
+            set_filter(v_ANS, "FAIL");
+            annotate_filter(v_ANS, "GWA5_A_UNCALLED_FailLowQual");
+            v_ANS.info["Samla"].push_back("Fail_ContextQual");
+        }
+    } else {  
+        // v_All has a variant, but we don't yet know if we accept it
+        if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
+            // We accept the v_All variant
+            v_ANS = v_All;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA5_A_CALLED_Pass");
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("PASS_ContextQual");
+            v_ANS.info["Samla"].push_back("AcceptSnp_A");
+        } else if (passedContextualQuality) {  // contextual is inconsistent
+            // We can't accept the v_All Variant, build on the entry with higher quality
+            if (v_Gen.quality >= v_Wga.quality) {
+                v_ANS = v_Gen;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA5_G_CALLED_FailInconsistent");
+            } else {
+                v_ANS = v_Wga;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA5_W_CALLED_FailInconsistent");
+            }
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
+            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        } else {
+            // We can't accept the v_All Variant, build on the entry with higher quality
+            if (v_Gen.quality >= v_Wga.quality) {
+                v_ANS = v_Gen;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA5_G_CALLED_FailLowQual");
+            } else {
+                v_ANS = v_Wga;
+                set_filter(v_ANS, "FAIL");
+                annotate_filter(v_ANS, "GWA5_W_CALLED_FailLowQual");
+            }
+            v_ANS.quality = qdelta_Contextual;
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("Fail_ContextQual");
+            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        }
+    }
+    v_ANS.info["SamlaContextQual"].push_back(generate_gwa_qual_string(v_Gen, v_Wga, v_All));
+    return(v_ANS);
+}
+
+
+// -------- 6_G  No variant in v_Gen, filtered variant (VQSR) in v_Wga.  Emit no variant.
+
+
+Variant
+method_gwa_case6_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+    if (DEBUG(2)) cout << "*** case 6_G method_gwa_case6_G()" << endl;
+    Variant v_ANS;
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = v_All;
-        nm += "_A";
-        annotate_samla_filter(v_ANS, nm);
+        set_filter(v_ANS, "PASS");
+        annotate_filter(v_ANS, "GWA6_G_A");
         v_ANS.quality = v_Gen.quality + v_Wga.quality;
         v_ANS.info["Samla"].push_back("Qual_G+W");
         v_ANS.info["Samla"].push_back("NoSnp_A");
     } else {
-        v_ANS = v_Gen;
-        nm += "_G";
-        annotate_samla_filter(v_ANS, nm);
-        v_ANS.info["Samla"].push_back("Qual_G");
-        v_ANS.info["Samla"].push_back("Snp_G");
+        // Favour the higher-quality no-variant if v_All disagrees
+        if (v_Gen.quality >= v_Wga.quality) {
+            // we will probably most often be here
+            v_ANS = v_Gen;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA6_G_G");
+            v_ANS.info["Samla"].push_back("Qual_G");
+            v_ANS.info["Samla"].push_back("NoSnp_G");
+        } else {
+            v_ANS = v_Wga;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA6_G_W");
+            v_ANS.info["Samla"].push_back("Qual_W");
+            v_ANS.info["Samla"].push_back("NoSnp_W");
+        }
         v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        if (DEBUG(2)) {
+            cerr << "**6_G** v_Gen is '.' with v_Wga LowQual but v_All *is* a variant" << endl;
+            cerr << "**6_G** G " << v_Gen << endl << "**6_G** W " << v_Wga << endl << "**6_G** A " << v_All << endl;
+        }
     }
     return(v_ANS);
 }
 
 
+// -------- 6_W  Filtered variant (VQSR) in v_Gen, no variant in v_Wga.  Emit no variant.
+
+
 Variant
-method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
-    // 5  SNP in v_Gen and no SNP in v_Wga, accept the v_Gen SNP
-    if (DEBUG(2)) cout << "*** case 5 method_gwa_case5()" << endl;
+method_gwa_case6_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+    if (DEBUG(2)) cout << "*** case 6_W method_gwa_case6_W()" << endl;
+    Variant v_ANS;
+    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+        v_ANS = v_All;
+        set_filter(v_ANS, "PASS");
+        annotate_filter(v_ANS, "GWA6_W_A");
+        v_ANS.quality = v_Gen.quality + v_Wga.quality;
+        v_ANS.info["Samla"].push_back("Qual_G+W");
+        v_ANS.info["Samla"].push_back("NoSnp_A");
+    } else {
+        // Favour the higher-quality no-variant if v_All disagrees
+        if (v_Gen.quality >= v_Wga.quality) {
+            v_ANS = v_Gen;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA6_W_G");
+            v_ANS.info["Samla"].push_back("Qual_G");
+            v_ANS.info["Samla"].push_back("NoSnp_G");
+        } else {
+            // we will probably most often be here
+            v_ANS = v_Wga;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA6_W_W");
+            v_ANS.info["Samla"].push_back("Qual_W");
+            v_ANS.info["Samla"].push_back("NoSnp_W");
+        }
+        v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        if (DEBUG(2)) {
+            cerr << "**6_W** v_Gen is LowQual with v_Wga '.' but v_All *is* a variant" << endl;
+            cerr << "**6_W** G " << v_Gen << endl << "**6_W** W " << v_Wga << endl << "**6_W** A " << v_All << endl;
+        }
+    }
+    return(v_ANS);
+}
+
+
+// -------- 7_G  No variant in v_Gen, filtered variant (LowQual) in v_Wga.  Emit no variant.
+
+
+Variant
+method_gwa_case7_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+    if (DEBUG(2)) cout << "*** case 7_G method_gwa_case7_G()" << endl;
+    Variant v_ANS;
+    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+        v_ANS = v_All;
+        set_filter(v_ANS, "PASS");
+        annotate_filter(v_ANS, "GWA7_G_A");
+        v_ANS.quality = v_Gen.quality + v_Wga.quality;
+        v_ANS.info["Samla"].push_back("Qual_G+W");
+        v_ANS.info["Samla"].push_back("NoSnp_A");
+    } else {
+        // Favour the higher-quality no-variant if v_All disagrees
+        if (v_Gen.quality >= v_Wga.quality) {
+            // we will probably most often be here
+            v_ANS = v_Gen;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA7_G_G");
+            v_ANS.info["Samla"].push_back("Qual_G");
+            v_ANS.info["Samla"].push_back("NoSnp_G");
+        } else {
+            v_ANS = v_Wga;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA7_G_W");
+            v_ANS.info["Samla"].push_back("Qual_W");
+            v_ANS.info["Samla"].push_back("NoSnp_W");
+        }
+        v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        if (DEBUG(2)) {
+            cerr << "**7_G** v_Gen is '.' with v_Wga LowQual but v_All *is* a variant" << endl;
+            cerr << "**7_G** G " << v_Gen << endl << "**7_G** W " << v_Wga << endl << "**7_G** A " << v_All << endl;
+        }
+    }
+    return(v_ANS);
+}
+
+
+// -------- 7_W  Filtered variant (LowQual) in v_Gen, no variant in v_Wga.  Emit no variant.
+
+
+Variant
+method_gwa_case7_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+    if (DEBUG(2)) cout << "*** case 7_W method_gwa_case7_W()" << endl;
+    Variant v_ANS;
+    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+        v_ANS = v_All;
+        set_filter(v_ANS, "PASS");
+        annotate_filter(v_ANS, "GWA7_W_A");
+        v_ANS.quality = v_Gen.quality + v_Wga.quality;
+        v_ANS.info["Samla"].push_back("Qual_G+W");
+        v_ANS.info["Samla"].push_back("NoSnp_A");
+    } else {
+        // Favour the higher-quality no-variant if v_All disagrees
+        if (v_Gen.quality >= v_Wga.quality) {
+            v_ANS = v_Gen;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA7_W_G");
+            v_ANS.info["Samla"].push_back("Qual_G");
+            v_ANS.info["Samla"].push_back("NoSnp_G");
+        } else {
+            // we will probably most often be here
+            v_ANS = v_Wga;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA7_W_W");
+            v_ANS.info["Samla"].push_back("Qual_W");
+            v_ANS.info["Samla"].push_back("NoSnp_W");
+        }
+        v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        if (DEBUG(2)) {
+            cerr << "**7_W** v_Gen is LowQual with v_Wga '.' but v_All *is* a variant" << endl;
+            cerr << "**7_W** G " << v_Gen << endl << "**7_W** W " << v_Wga << endl << "**7_W** A " << v_All << endl;
+        }
+    }
+    return(v_ANS);
+}
+
+
+// -------- 8_G  Variant in v_Gen, no variant in v_Wga.  Emit v_Gen variant.
+
+
+Variant
+method_gwa_case8_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+    if (DEBUG(2)) cout << "*** case 8_G method_gwa_case8_G()" << endl;
     Variant v_ANS(v_Gen);
-    annotate_samla_filter(v_ANS, "GWA5");
+    set_filter(v_ANS, "PASS");
+    annotate_filter(v_ANS, "GWA8_G");
     v_ANS.info["Samla"].push_back("Qual_G");
     v_ANS.info["Samla"].push_back("Snp_G");
     return(v_ANS);
 }
 
+
+// -------- 8_W  No-variant in v_Gen, variant in v_Wga.  Emit v_Wga variant.
+
+
 Variant
-method_gwa_case6(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
-    // 6  no SNP in v_Gen and SNP in v_Wga, accept the v_Wga SNP
-    if (DEBUG(2)) cout << "*** case 6 method_gwa_case6()" << endl;
+method_gwa_case8_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+    if (DEBUG(2)) cout << "*** case 8_W method_gwa_case8_W()" << endl;
     Variant v_ANS(v_Wga);
-    annotate_samla_filter(v_ANS, "GWA6");
+    set_filter(v_ANS, "PASS");
+    annotate_filter(v_ANS, "GWA8_W");
     v_ANS.info["Samla"].push_back("Qual_W");
     v_ANS.info["Samla"].push_back("Snp_W");
     return(v_ANS);
 }
 
 
+// -------- 9  No-variant in v_Gen, no-variant in v_Wga.  Emit no-variant,
+//             either A if it is also no-variant or whichever of the others
+//             has the highest quality.
+
+
 Variant
-method_gwa_case7(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
-    // 7  no SNP in v_Gen and no SNP in v_Wga, no SNP
-    // Favour v_Gen if v_All disagrees
-    if (DEBUG(2)) cout << "*** case 7 method_gwa_case7()" << endl;
+method_gwa_case9(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+    if (DEBUG(2)) cout << "*** case 9 method_gwa_case9()" << endl;
     Variant v_ANS;
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = v_All;
-        annotate_samla_filter(v_ANS, "GWA7_A");
+        set_filter(v_ANS, "PASS");
+        annotate_filter(v_ANS, "GWA9_A");
         v_ANS.quality = v_Gen.quality + v_Wga.quality;
         v_ANS.info["Samla"].push_back("Qual_G+W");
         v_ANS.info["Samla"].push_back("NoSnp");
     } else {
-        // cerr << "**** strange case 7, v_Gen and v_Wga are '.' but v_All is *not* NO_VARIATION" << endl;
-        // exit(1);
-        v_ANS = v_Gen;
-        annotate_samla_filter(v_ANS, "GWA7_G");
-        v_ANS.info["Samla"].push_back("Qual_G");
-        v_ANS.info["Samla"].push_back("Snp_G");
+        // Favour the higher-quality no-variant if v_All disagrees
+        // We will probably very rarely end up here
+        if (v_Gen.quality >= v_Wga.quality) {
+            v_ANS = v_Gen;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA9_G");
+            v_ANS.info["Samla"].push_back("Qual_G");
+            v_ANS.info["Samla"].push_back("NoSnp_G");
+        } else {
+            v_ANS = v_Wga;
+            set_filter(v_ANS, "PASS");
+            annotate_filter(v_ANS, "GWA9_W");
+            v_ANS.info["Samla"].push_back("Qual_W");
+            v_ANS.info["Samla"].push_back("NoSnp_W");
+        }
         v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        if (DEBUG(2)) {
+            cerr << "**9** v_Gen and v_Wga both no-variant, but v_All *is* a variant" << endl;
+            cerr << "**9** G " << v_Gen << endl << "**9** W " << v_Wga << endl << "**9** A " << v_All << endl;
+        }
     }
     return(v_ANS);
 }
