@@ -704,7 +704,8 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << "'gwa' method options:" <<endl;
     cerr << endl;
     cerr << "     --gwa-window INT                 lookback window size for mean quality, max " << max_gwa_window_size << "[" << opt_gwa_window_size << "]" << endl;
-    cerr << "     --gwa-quality FLOAT              minimum quality when combining both VQSR and LowQual variants and call does not match reference [" << opt_gwa_quality << "]" << endl;
+    cerr << "     --gwa-quality FLOAT              minimum quality when combining both VQSR and LowQual variants [" << opt_gwa_quality << "]" << endl;
+    cerr << "                                      Specifying this option will set all the quality values below to the given value." << endl;
     cerr << "     --gwa-vqsr-quality FLOAT         minimum quality when combining VQSR variants [" << opt_gwa_vqsr_quality << "]" << endl;
     cerr << "     --gwa-lowqual-quality FLOAT      minimum quality when combining LowQual variants and call does not match reference [" << opt_gwa_lowqual_quality << "]" << endl;
     cerr << "     --gwa-lowqual-quality-ref FLOAT  minimum quality to meet when combining LowQual variants and call matches reference [" << opt_gwa_lowqual_quality_ref << "]" << endl;
