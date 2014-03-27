@@ -893,6 +893,25 @@ bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
             exitmessage("unknown VCF file ", vars[i]->vcf->filename);
     }
 
+    if (v_Gen.info.size() == 0) {
+        stringstream ss;
+        ss << "method_gwa(): Genomic variant at " << v_Gen.sequenceName << ":" << v_Gen.position 
+            << " has an empty INFO field (col 8), method 'gwa' requires this" << endl;
+        exitmessage(ss.str());
+    }
+    if (v_Wga.info.size() == 0) {
+        stringstream ss;
+        ss << "method_gwa(): WGA variant at " << v_Wga.sequenceName << ":" << v_Wga.position 
+            << " has an empty INFO field (col 8), method 'gwa' requires this" << endl;
+        exitmessage(ss.str());
+    }
+    if (v_All.info.size() == 0) {
+        stringstream ss;
+        ss << "method_gwa(): All variant at " << v_All.sequenceName << ":" << v_All.position 
+            << " has an empty INFO field (col 8), method 'gwa' requires this" << endl;
+        exitmessage(ss.str());
+    }
+
     if (DEBUG(2)) {
         if (skip_case && v_Gen.filter == "." && v_Gen.alleles[1] == "."
                       && v_Wga.filter == "." && v_Wga.alleles[1] == "."
@@ -1021,17 +1040,17 @@ Case 1: Unambiguous variant for G and W.  What is emitted depends on whether A i
 also a variant, and if not which of G and W has the highest quality.  Suffix indicates
 which variant was emitted as the variant (_A, _G, _W).
 
-GWA1_A : G, W, A are variants : Emit A as variant.
+GWA1_A : G, W, A are variants : Emit A as variant. PASS
 
     The unambiguous variant A is the emitted variant.  Quality is the summed qualities
     of G and W.
 
-GWA1_G : G, W are variants, A is *not* a variant : Emit G as variant.
+GWA1_G : G, W are variants, A is *not* a variant : Emit G as variant. PASS
 
     Since A was not a variant, we choose one of the others to emit.  Quality G
     >= W so G is the emitted variant.  Quality is quality of G.
     
-GWA1_W : G, W are variants, A is *not* a variant : Emit W as variant.
+GWA1_W : G, W are variants, A is *not* a variant : Emit W as variant. PASS
 
     Since A was not a variant, we choose one of the others to emit.  Quality G
     < W so W is the emitted variant.  Quality is quality of W.
@@ -1046,19 +1065,19 @@ other.  Suffix 1 indicates which was the unambiguous variant (_G, _W), suffix 2
 indicates which was used for the emitted variant (_A, _G, _W).
 TODO: does this quality structure make sense?
 
-GWA_2_G_G : G is variant, W is filtered no-variant, A is no-variant : Emit G as variant.
+GWA_2_G_G : G is variant, W is filtered no-variant, A is no-variant : Emit G as variant. PASS
 
     The unambiguous variant G is the only variant.  Quality is quality of G.
 
-GWA_2_G_A : G is variant, W is filtered no-variant, A is variant : Emit A as variant.
+GWA_2_G_A : G is variant, W is filtered no-variant, A is variant : Emit A as variant. PASS
 
     Both G and A are variants.  Quality is quality of G plus contextual quality of W.
 
-GWA_2_W_W : G is filtered no-variant, W is variant, A is no-variant : Emit W as variant.
+GWA_2_W_W : G is filtered no-variant, W is variant, A is no-variant : Emit W as variant. PASS
 
     The unambiguous variant W is the only variant.  Quality is quality of W.
 
-GWA_2_W_A : G is filtered no-variant, W is variant, A is variant : Emit A as variant.
+GWA_2_W_A : G is filtered no-variant, W is variant, A is variant : Emit A as variant. PASS
 
     Both W and A are variants.  Quality is quality of W plus contextual quality of G.
 
@@ -1069,54 +1088,54 @@ on whether the --gwa-vqsr-quality threshold is reached.  Suffix 1 indicates
 which source was used for generating the emitted variant or no-variant (_A, _G,
 _W), suffix 2 indicates what was the result of the quality threshhold filter.
 
-GWA3_A_CALLED_Pass : G and W VQSR no-variant, A *is* variant : Emit A variant
+GWA3_A_CALLED_Pass : G and W VQSR no-variant, A *is* variant : Emit A variant.  PASS
 
     v_All is variant and the sum of the contextual quality of v_Gen and v_Wga
     is above --gwa-vqsr-quality, so we emit A as the variant.  Quality is the
     sum of contextual qualities for G and W.
 
-GWA3_G_CALLED_FailLowQual : G and W VQSR no-variant, A *is* variant : Emit G as no-variant
+GWA3_G_CALLED_FailLowQual : G and W VQSR no-variant, A *is* variant : Emit G as no-variant.  FAIL
 
     v_All is no-variant and the sum of the contextual quality of v_Gen and
     v_Wga is below --gwa-vqsr-quality, so we do not emit a variant.  The
     quality of G >= W so emit G as the no-variant.  Quality is the sum of
     contextual qualities for G and W.
 
-GWA3_W_CALLED_FailLowQual : G and W VQSR no-variant, A *is* variant : Emit W as no-variant
+GWA3_W_CALLED_FailLowQual : G and W VQSR no-variant, A *is* variant : Emit W as no-variant.  FAIL
 
     v_All is no-variant and the sum of the contextual quality of v_Gen and
     v_Wga is below --gwa-vqsr-quality, so we do not emit a variant.  The
     quality of G < W so emit W as the no-variant.  Quality is the sum of
     contextual qualities for G and W.
 
-GWA3_G_CALLED_FailInconsistent : G, W VQSR no-variant, A *is* variant : Emit G as no-variant
+GWA3_G_CALLED_FailInconsistent : G, W VQSR no-variant, A *is* variant : Emit G as no-variant.  FAIL
 
     v_All is variant and the contextual qualities for v_Gen and v_Wga have
     opposite signs, so are not in concert in indicating there is evidence for
     an uncalled variant.  Quality of G >= W so emit G as the no-variant.
     Quality is the sum of contextual qualities for G and W.
 
-GWA3_W_CALLED_FailInconsistent : G, W VQSR no-variant, A *is* variant : Emit W as no-variant
+GWA3_W_CALLED_FailInconsistent : G, W VQSR no-variant, A *is* variant : Emit W as no-variant.  FAIL
 
     v_All is variant and the contextual qualities for v_Gen and v_Wga have
     opposite signs, so are not in concert in indicating there is evidence for
     an uncalled variant.  Quality of G < W so emit W as the no-variant.
     Quality is the sum of contextual qualities for G and W.
 
-GWA3_A_UNCALLED_Fail : G, W VQSR no-variant, A no-variant but there should be a variant: Emit A as no-variant
+GWA3_A_UNCALLED_Fail : G, W VQSR no-variant, A no-variant but there should be a variant: Emit A as no-variant.  FAIL
 
     v_All is no-variant but the sum of the contextual quality of v_Gen and v_Wga
     is above --gwa-vqsr-quality, so we *should* be emitting a variant but we can't
     because v_All doesn't contain any variant information.  Quality is sum of
     contextual qualities for G and W.
 
-GWA3_A_UNCALLED_FailLowQual : G, W VQSR no-variant, A no-variant : Emit no variant
+GWA3_A_UNCALLED_FailLowQual : G, W VQSR no-variant, A no-variant : Emit no variant.  FAIL
 
     v_All is no-variant and the sum of the contextual quality of v_Gen and v_Wga
     is below --gwa-vqsr-quality, so we do not emit a variant.  Quality is sum of
     contextual qualities for G and W.
 
-GWA3_A_UNCALLED_FailInconsistent : G, W VQSR no-variant, A no-variant : Emit no variant
+GWA3_A_UNCALLED_FailInconsistent : G, W VQSR no-variant, A no-variant : Emit no variant.  FAIL
 
     v_All is no-variant and the contextual qualities for v_Gen and v_Wga have
     opposite signs, so are not in concert in indicating there is evidence for
@@ -1137,40 +1156,40 @@ replacing VQSR, and --gwa-lowqual-quality replacing --gwa-vqsr-quality.
 The exceptions to this is three new cases having to do with testing against
 --gwa-lowqual-quality-ref, when we think the position should match the reference.
 
-GWA4_A_CALLED_Pass : G and W LowQual no-variant, A *is* variant : Emit A variant
+GWA4_A_CALLED_Pass : G and W LowQual no-variant, A *is* variant : Emit A variant.  PASS
 
-GWA4_G_CALLED_Fail_QualityRef : G, W LowQual no-variant, A *is* variant : Emit G as no-variant
+GWA4_G_CALLED_Fail_QualityRef : G, W LowQual no-variant, A *is* variant : Emit G as no-variant.  FAIL
 
     A is called as a variant but we think this is a mistake, because we fail contextual
     quality but pass G quality + W quality >= gwa-lowqual-quality-ref.  We emit G as the
     no-variant because for quality G >= W, with quality G + W
 
-GWA4_W_CALLED_Fail_QualityRef : G, W LowQual no-variant, A *is* variant : Emit W as no-variant
+GWA4_W_CALLED_Fail_QualityRef : G, W LowQual no-variant, A *is* variant : Emit W as no-variant.  FAIL
 
     A is called as a variant but we think this is a mistake, because we fail contextual
     quality but pass G quality + W quality >= gwa-lowqual-quality-ref.  We emit W as the
     no-variant because for quality G < W, with quality G + W
 
-GWA4_G_CALLED_FailLowQual : G and W LowQual no-variant, A *is* variant : Emit G as no-variant
+GWA4_G_CALLED_FailLowQual : G and W LowQual no-variant, A *is* variant : Emit G as no-variant.  FAIL
 
-GWA4_W_CALLED_FailLowQual : G and W LowQual no-variant, A *is* variant : Emit W as no-variant
+GWA4_W_CALLED_FailLowQual : G and W LowQual no-variant, A *is* variant : Emit W as no-variant.  FAIL
 
-GWA4_G_CALLED_FailInconsistent : G, W LowQual no-variant, A *is* variant : Emit G as no-variant
+GWA4_G_CALLED_FailInconsistent : G, W LowQual no-variant, A *is* variant : Emit G as no-variant.  FAIL
 
-GWA4_W_CALLED_FailInconsistent : G, W LowQual no-variant, A *is* variant : Emit W as no-variant
+GWA4_W_CALLED_FailInconsistent : G, W LowQual no-variant, A *is* variant : Emit W as no-variant.  FAIL
 
-GWA4_A_UNCALLED_Pass_QualityRef : G, W LowQual, A no-variant : Emit A as no-variant
+GWA4_A_UNCALLED_Pass_QualityRef : G, W LowQual, A no-variant : Emit A as no-variant.  PASS
 
     A is not a variant and we fail contextual quality (thus we don't think we
     are missing a variant, as for GWA4_A_UNCALLED_Fail), so we think we actually
     match the reference, as we have enough strength for G quality + W quality 
     >= gwa-lowqual-quality-ref, with quality G + W
 
-GWA4_A_UNCALLED_Fail : G, W LowQual no-variant, A no-variant but there should be a variant: Emit A as no-variant
+GWA4_A_UNCALLED_Fail : G, W LowQual no-variant, A no-variant but there should be a variant: Emit A as no-variant.  FAIL
 
-GWA4_A_UNCALLED_FailLowQual : G, W LowQual no-variant, A no-variant : Emit no variant
+GWA4_A_UNCALLED_FailLowQual : G, W LowQual no-variant, A no-variant : Emit no variant.  FAIL
 
-GWA4_A_UNCALLED_FailInconsistent : G, W LowQual no-variant, A no-variant : Emit no variant
+GWA4_A_UNCALLED_FailInconsistent : G, W LowQual no-variant, A no-variant : Emit no variant.  FAIL
 
 ****
 
@@ -1187,21 +1206,21 @@ Cases below are identical to those for case 3, with GWA5 replacing GWA3,
 'LowQual/VQSR' replacing VQSR, and --gwa-mixed-quality replacing
 --gwa-vqsr-quality.
 
-GWA5_A_CALLED_Pass : G and W LowQual/VQSR no-variant, A *is* variant : Emit A variant
+GWA5_A_CALLED_Pass : G and W LowQual/VQSR no-variant, A *is* variant : Emit A variant.  PASS
 
-GWA5_G_CALLED_FailLowQual : G and W LowQual/VQSR no-variant, A *is* variant : Emit G as no-variant
+GWA5_G_CALLED_FailLowQual : G and W LowQual/VQSR no-variant, A *is* variant : Emit G as no-variant.  FAIL
 
-GWA5_W_CALLED_FailLowQual : G and W LowQual/VQSR no-variant, A *is* variant : Emit W as no-variant
+GWA5_W_CALLED_FailLowQual : G and W LowQual/VQSR no-variant, A *is* variant : Emit W as no-variant.  FAIL
 
-GWA5_G_CALLED_FailInconsistent : G, W LowQual/VQSR no-variant, A *is* variant : Emit G as no-variant
+GWA5_G_CALLED_FailInconsistent : G, W LowQual/VQSR no-variant, A *is* variant : Emit G as no-variant.  FAIL
 
-GWA5_W_CALLED_FailInconsistent : G, W LowQual/VQSR no-variant, A *is* variant : Emit W as no-variant
+GWA5_W_CALLED_FailInconsistent : G, W LowQual/VQSR no-variant, A *is* variant : Emit W as no-variant.  FAIL
 
-GWA5_A_UNCALLED_Fail : G, W LowQual/VQSR no-variant, A no-variant but there should be a variant: Emit A as no-variant
+GWA5_A_UNCALLED_Fail : G, W LowQual/VQSR no-variant, A no-variant but there should be a variant: Emit A as no-variant.  FAIL
 
-GWA5_A_UNCALLED_FailLowQual : G, W LowQual/VQSR no-variant, A no-variant : Emit no variant
+GWA5_A_UNCALLED_FailLowQual : G, W LowQual/VQSR no-variant, A no-variant : Emit no variant.  FAIL
 
-GWA5_A_UNCALLED_FailInconsistent : G, W LowQual/VQSR no-variant, A no-variant : Emit no variant
+GWA5_A_UNCALLED_FailInconsistent : G, W LowQual/VQSR no-variant, A no-variant : Emit no variant.  FAIL
 
 ****
 
@@ -1209,32 +1228,32 @@ Case 6: No variant in one, VQSR-filtered variant in the other.  Emit no
 variant.  Suffix 1 based on which variant was no-variant (_G, _W) and suffix 2
 which variant was used for the basis of the emitted no-variant (_A, _G, _W).
  
-GWA6_G_A  : G no-variant, W VQSR, A emitted : Emit no variant
+GWA6_G_A  : G no-variant, W VQSR, A emitted : Emit no variant.  PASS
 
     v_All is no-variant so use v_All as emitted no-variant.  Quality is
     v_Gen.quality+v_Wga.quality.
 
-GWA6_G_G  : G no-variant, W VQSR, G emitted : Emit no variant
+GWA6_G_G  : G no-variant, W VQSR, G emitted : Emit no variant.  PASS
 
     v_All *is* a variant, v_Gen quality >= v_Wga quality so use v_Gen as
     emitted no-variant. Quality is v_Gen.quality.
 
-GWA6_G_W  : G no-variant, W VQSR, W emitted : Emit no variant
+GWA6_G_W  : G no-variant, W VQSR, W emitted : Emit no variant.  PASS
 
     v_All *is* a variant, v_Gen quality < v_Wga quality so use v_Wga as emitted
     no-variant.  Quality is v_Wga.quality.
 
-GWA6_W_A  : G VQSR, W no-variant, A emitted : Emit no variant
+GWA6_W_A  : G VQSR, W no-variant, A emitted : Emit no variant.  PASS
 
     v_All is no-variant so use v_All as emitted no-variant.  Quality is
     v_Gen.quality+v_Wga.quality.
 
-GWA6_W_G  : G VQSR, W no-variant, G emitted : Emit no variant
+GWA6_W_G  : G VQSR, W no-variant, G emitted : Emit no variant.  PASS
 
     v_All *is* a variant, v_Gen quality >= v_Wga quality so use v_Gen as
     emitted no-variant. Quality is v_Gen.quality.
 
-GWA6_W_W  : G VQSR, W no-variant, W emitted : Emit no variant
+GWA6_W_W  : G VQSR, W no-variant, W emitted : Emit no variant.  PASS
 
     v_All *is* a variant, v_Gen quality < v_Wga quality so use v_Wga as emitted
     no-variant.  Quality is v_Wga.quality.
@@ -1246,32 +1265,32 @@ variant.  As for case 6, suffix 1 based on which variant was no-variant (_G,
 _W) and suffix 2 which variant was used for the basis of the emitted no-variant
 (_A, _G, _W).
  
-GWA7_G_A  : G no-variant, W LowQual, A emitted : Emit no variant
+GWA7_G_A  : G no-variant, W LowQual, A emitted : Emit no variant.  PASS
 
     v_All is no-variant so use v_All as emitted no-variant.  Quality is
     v_Gen.quality+v_Wga.quality.
 
-GWA7_G_G  : G no-variant, W LowQual, G emitted : Emit no variant
+GWA7_G_G  : G no-variant, W LowQual, G emitted : Emit no variant.  PASS
 
     v_All *is* a variant, v_Gen quality >= v_Wga quality so use v_Gen as
     emitted no-variant. Quality is v_Gen.quality.
 
-GWA7_G_W  : G no-variant, W LowQual, W emitted : Emit no variant
+GWA7_G_W  : G no-variant, W LowQual, W emitted : Emit no variant.  PASS
 
     v_All *is* a variant, v_Gen quality < v_Wga quality so use v_Wga as emitted
     no-variant.  Quality is v_Wga.quality.
 
-GWA7_W_A  : G LowQual, W no-variant, A emitted : Emit no variant
+GWA7_W_A  : G LowQual, W no-variant, A emitted : Emit no variant.  PASS
 
     v_All is no-variant so use v_All as emitted no-variant.  Quality is
     v_Gen.quality+v_Wga.quality.
 
-GWA7_W_G  : G LowQual, W no-variant, G emitted : Emit no variant
+GWA7_W_G  : G LowQual, W no-variant, G emitted : Emit no variant.  PASS
 
     v_All *is* a variant, v_Gen quality >= v_Wga quality so use v_Gen as
     emitted no-variant. Quality is v_Gen.quality.
 
-GWA7_W_W  : G LowQual, W no-variant, W emitted : Emit no variant
+GWA7_W_W  : G LowQual, W no-variant, W emitted : Emit no variant.  PASS
 
     v_All *is* a variant, v_Gen quality < v_Wga quality so use v_Wga as emitted
     no-variant.  Quality is v_Wga.quality.
@@ -1281,11 +1300,11 @@ GWA7_W_W  : G LowQual, W no-variant, W emitted : Emit no variant
 Case 8: Variant in one, no-variant in the other.  Emit the one with the variant.
 Suffix indicate which was the variant (_G, _W).
 
-GWA8_G  : G variant, W no-variant, G emitted : Emit G variant
+GWA8_G  : G variant, W no-variant, G emitted : Emit G variant.  PASS
 
     v_Gen is emitted variant.  Quality is v_Gen.quality.
 
-GWA8_W  : G no-variant, W LowQual, W emitted : Emit W variant
+GWA8_W  : G no-variant, W LowQual, W emitted : Emit W variant.  PASS
 
     v_Wga is emitted variant.  Quality is v_Wga.quality.
 
@@ -1294,16 +1313,16 @@ GWA8_W  : G no-variant, W LowQual, W emitted : Emit W variant
 Case 9: No-variant in both.  Emit the highest-quality no-variant.  Suffix
 indicates which no-variant was the best (_A, _G, _W).
 
-GWA9_A  : G no-variant, W no-variant, A no-variant, A emitted : Emit A no-variant
+GWA9_A  : G no-variant, W no-variant, A no-variant, A emitted : Emit A no-variant.  PASS
 
     v_All is emitted variant.  Quality is v_Gen.quality+v_Wga.quality.
 
-GWA9_G  : G no-variant, W no-variant, A *is* variant, G emitted : Emit G no-variant
+GWA9_G  : G no-variant, W no-variant, A *is* variant, G emitted : Emit G no-variant.  PASS
 
     v_All *is* a variant, v_Gen quality >= v_Wga quality so v_Gen is emitted
     variant.  Quality is v_Gen.quality.  Probably very rare.
 
-GWA9_W  : G no-variant, W no-variant, A *is* variant, W emitted : Emit W no-variant
+GWA9_W  : G no-variant, W no-variant, A *is* variant, W emitted : Emit W no-variant.  PASS
 
     v_All *is* a variant, v_Gen quality < v_Wga quality so v_Wga is emitted
     variant.  Quality is v_Wga.quality.  Probably very rare.
