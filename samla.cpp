@@ -5,32 +5,47 @@
 // the results
 //
 // Uses the vcflib (https://github.com/ekg/vcflib) library for reading VCF
-// files.
+// files.  I am using my own fork (https://github.com/douglasgscofield/vcflib)
+// that is changed to:
+//   - use const a bit more often especially on const accessors
+//   - add Vcf.filename field
+//   - TODO rewrite operator<< to not modify fields of Variant
+//   - TODO add method Variant.fixup to make modifications to Variant that
+//     are currently done by operator<<
+//   - TODO handle missing data on output like the VCF presented it on input
+//     e.g. if VCF had genotype ./. output this instead of .
 //
+
+#define NAME "samla"
+#define VERSION "0.0.2"
 
 // CHANGELOG
 //
+// 0.0.2 : Implement method 'gwa'
 //
+// 0.0.1 : Implement and lightly test VcfStripmine class
 
 // TODO
-// -x- open and read VCF file
-// -x- " " " multiple VCF files
-// --- output messages combining info from variants across VCF files
-// --- deal with indels
-// --- combine likelihoods
-// --- return Variants in order of VCFs
+// --- Deal with indels in some way
+// --- Generalise a method for determining whether variant is no-variant,
+//     to bypass gwa reliance on GATK's VariantType=NO_VARIATION.  Perhaps
+//     derive a class from Variant adding a method/field to do each variant?
+// --- Once the above is done, generalise gwa to not rely on GATK's 
+//     VariantType=NO_VARIATION
+// --- For gwa method, turn lookback window into surrounding window.  This
+//     is a bit tricky as it will involve caching
+// --- Return Variants from VcfStripmine in order of VCFs
 //
 
 // #define NDEBUG  // uncomment to remove assert() code
 #include <assert.h>
-#define IF_DEBUG(__lvl__) if (opt_debug >= __lvl__)
-#define DEBUG(__lvl__) (opt_debug >= __lvl__)
 
-// vcflib
+// vcflib, for this to work, requires -I/path/to/vcflib during compilation
 //
 #include "src/Variant.h"
 
-// very nice argument handling
+// very nice argument handling, from https://code.google.com/p/simpleopt/
+// TODO update to version 3.6
 //
 #include "SimpleOpt.h"
 
@@ -51,7 +66,6 @@
 //#include <ctype.h>
 //#include <stdint.h>
 
-#define NAME "samla"
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1
 
@@ -74,6 +88,7 @@ static double       opt_gwa_mixed_quality = 30.0;
 static bool         opt_filter_annotate = true;
 static bool         opt_stdio = false;
 static size_t       opt_debug = 1;
+#define             DEBUG(__level__) (opt_debug >= __level__)
 static size_t       debug_progress = 10000;
 static size_t       opt_progress = 0; // 1000000;
 static size_t       num_variants = 0;
@@ -684,11 +699,13 @@ static void
 exitusage(const string& msg, const string& msg2, const string& msg3, const string& msg4, const string& msg5) {
     if (! msg.empty()) cerr << endl << "*** " << msg << msg2 << msg3 << msg4 << msg5 << endl;
     cerr << endl;
+    cerr << NAME << " " << VERSION << endl;
+    cerr << endl;
     cerr << "Usage:   " << NAME << " [options] -r refnames.txt <in1.vcf> [ in2.vcf ... ]" << endl;
     cerr << endl;
     cerr << "Collect VCF results and produce a consensus list of variants." << endl;
     cerr << endl;
-    cerr << "NOTE: This command is under active development." << endl;
+    cerr << "NOTE: " << NAME << " " << VERSION << " is under active development." << endl;
     cerr << endl;
     cerr << "     --references FILE            file containing reference names in order [REQUIRED]" << endl;
     cerr << "                                  should be in the same order as the VCF files" << endl;
