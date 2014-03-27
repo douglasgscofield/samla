@@ -903,10 +903,9 @@ bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
         ss << "method_gwa(): WGA variant at " << v_Wga.sequenceName << ":" << v_Wga.position 
             << " has an empty INFO field (col 8), method 'gwa' requires this" << endl;
     if (v_All.info.size() == 0)
-        stringstream ss;
         ss << "method_gwa(): All variant at " << v_All.sequenceName << ":" << v_All.position 
             << " has an empty INFO field (col 8), method 'gwa' requires this" << endl;
-    if (ss.str().size())
+    if (ss.str().length())
         exitmessage(ss.str());
 
     if (DEBUG(2)) {
