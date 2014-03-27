@@ -883,34 +883,31 @@ bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
     Variant v_Wga;
     Variant v_All;
     for (size_t i = 0; i < vars.size(); ++i) {
-        if (vars[i]->vcf->filename == vcf_genomic) 
+        if (vars[i]->vcf->filename == vcf_genomic) {
             v_Gen = *vars[i];
-        else if (vars[i]->vcf->filename == vcf_wga) 
+        } else if (vars[i]->vcf->filename == vcf_wga) {
             v_Wga = *vars[i];
-        else if (vars[i]->vcf->filename == vcf_all) 
+        } else if (vars[i]->vcf->filename == vcf_all) {
             v_All = *vars[i];
-        else 
+        } else {
             exitmessage("unknown VCF file ", vars[i]->vcf->filename);
+        }
     }
-
-    if (v_Gen.info.size() == 0) {
-        stringstream ss;
+    // Check various features of variants.
+    // Note that var.info.size() == 0 will also catch uninitialised vars, though not explicitly.
+    stringstream ss;
+    if (v_Gen.info.size() == 0)
         ss << "method_gwa(): Genomic variant at " << v_Gen.sequenceName << ":" << v_Gen.position 
             << " has an empty INFO field (col 8), method 'gwa' requires this" << endl;
-        exitmessage(ss.str());
-    }
-    if (v_Wga.info.size() == 0) {
-        stringstream ss;
+    if (v_Wga.info.size() == 0)
         ss << "method_gwa(): WGA variant at " << v_Wga.sequenceName << ":" << v_Wga.position 
             << " has an empty INFO field (col 8), method 'gwa' requires this" << endl;
-        exitmessage(ss.str());
-    }
-    if (v_All.info.size() == 0) {
+    if (v_All.info.size() == 0)
         stringstream ss;
         ss << "method_gwa(): All variant at " << v_All.sequenceName << ":" << v_All.position 
             << " has an empty INFO field (col 8), method 'gwa' requires this" << endl;
+    if (ss.str().size())
         exitmessage(ss.str());
-    }
 
     if (DEBUG(2)) {
         if (skip_case && v_Gen.filter == "." && v_Gen.alleles[1] == "."
