@@ -48,7 +48,8 @@ VCFLIB_OTHER_OBJS=../vcflib/smithwaterman/SmithWatermanGotoh.o \
 			../vcflib/tabixpp/bgzf.o
 VCFLIB_DISORDER=../vcflib/smithwaterman/disorder.c
 # TODO: disorder.c is compiled fresh each time which is wasteful, should probably
-# have extern "C" around it within vcflib
+# have extern "C" around it within vcflib... but that breaks its own compilation
+# within other parts of vcflib.
 
 #---------------------------  Main program
 

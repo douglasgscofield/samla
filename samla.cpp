@@ -32,6 +32,11 @@
 //     derive a class from Variant adding a method/field to do each variant?
 // --- Once the above is done, generalise gwa to not rely on GATK's 
 //     VariantType=NO_VARIATION
+// --- For gwa method, what do we need to modify in the INFO field?  Perhaps
+//     remove VariantType=NO_VARIATION for accepted variants is one...
+// --- For gwa method, produce headers on output
+// --- For gwa method, add appropriate entries to headers
+// --- For gwa method, ensure INFO is VCF 4.1-compliant
 // --- For gwa method, turn lookback window into surrounding window.  This
 //     is a bit tricky as it will involve caching
 // --- Return Variants from VcfStripmine in order of VCFs
@@ -699,7 +704,7 @@ static void
 exitusage(const string& msg, const string& msg2, const string& msg3, const string& msg4, const string& msg5) {
     if (! msg.empty()) cerr << endl << "*** " << msg << msg2 << msg3 << msg4 << msg5 << endl;
     cerr << endl;
-    cerr << NAME << " " << VERSION << endl;
+    cerr << "Version: " << NAME << " " << VERSION << endl;
     cerr << endl;
     cerr << "Usage:   " << NAME << " [options] -r refnames.txt <in1.vcf> [ in2.vcf ... ]" << endl;
     cerr << endl;
