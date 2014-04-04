@@ -730,8 +730,6 @@ static void
 exitusage(const string& msg, const string& msg2, const string& msg3, const string& msg4, const string& msg5) {
     if (! msg.empty()) cerr << endl << "*** " << msg << msg2 << msg3 << msg4 << msg5 << endl;
     cerr << endl;
-    cerr << "Version: " << NAME << " " << VERSION << endl;
-    cerr << endl;
     cerr << "Usage:   " << NAME << " [options] -r refnames.txt <in1.vcf> [ in2.vcf ... ]" << endl;
     cerr << endl;
     cerr << "Collect VCF results and produce a consensus list of variants." << endl;
@@ -771,6 +769,10 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << "     --vcf-all FILE               VCF file containing all (pooled) calls" << endl;
     cerr << endl;
     cerr << "     -h | -? | --help             help" << endl;
+    cerr << endl;
+    cerr << "Version:     " << NAME << " " << VERSION << endl;
+    cerr << endl;
+    cerr << "Build flags: " << CXXFLAGS << endl;
     cerr << endl;
     exit(EXIT_FAILURE);
 }

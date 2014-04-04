@@ -8,6 +8,10 @@
 *.o
 *.a
 samla
+samla-opt
+samla-profile
+samla-release
+samla-release-profile
 a.out
 t.cpp
 *.txt

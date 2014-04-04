@@ -1,15 +1,14 @@
 
 CXX=		g++
-#CXX=		/opt/local/bin/gcc
-#CXXFLAGS=	-Wall -O3 -D_WITH_DEBUG 
-CXXFLAGS=	-I../vcflib -Wall -D_FILE_OFFSET_BITS=64 -D_WITH_DEBUG -ggdb -g3 -fvar-tracking-assignments -fno-inline -fno-inline-small-functions -O0 -fno-eliminate-unused-debug-types
-#CXXFLAGS=	-Wall -pg -g -D_WITH_DEBUG 
+O_FLAG=         -O0
+D_FLAG=         -D_WITH_DEBUG -ggdb -g3 -fvar-tracking-assignments -fno-inline -fno-inline-small-functions -fno-eliminate-unused-debug-types
+P_FLAG=         
+CXXFLAGS=	-I../vcflib -Wall -D_FILE_OFFSET_BITS=64 $(O_FLAG) $(D_FLAG) $(P_FLAG)
 
 PROG=		samla
 
 LIBS=		-lm -lz
 
-#VCFLIB_LIBS=-L../vcflib/ -L../vcflib/tabixpp/ -ltabix
 VCFLIB_LIBS=-L../vcflib/tabixpp/ -ltabix
 
 OBJS=		samla.o
@@ -26,17 +25,6 @@ VCFLIB_AR=	vcflib.a
 
 VCFLIB_OBJS=../vcflib/src/Variant.o \
 			../vcflib/src/split.o
-#VCFLIB_OTHER_OBJS=../vcflib/smithwaterman/SmithWatermanGotoh.o \
-#			../vcflib/smithwaterman/Repeats.o \
-#			../vcflib/smithwaterman/disorder.o \
-#			../vcflib/smithwaterman/LeftAlign.o \
-#			../vcflib/smithwaterman/IndelAllele.o \
-#			../vcflib/src/ssw.o \
-#			../vcflib/src/ssw_cpp.o \
-#			../vcflib/fastahack/Fasta.o \
-#			../vcflib/fsom/fsom.o \
-#			../vcflib/tabixpp/tabix.o \
-#			../vcflib/tabixpp/bgzf.o
 VCFLIB_OTHER_OBJS=../vcflib/smithwaterman/SmithWatermanGotoh.o \
 			../vcflib/smithwaterman/Repeats.o \
 			../vcflib/smithwaterman/LeftAlign.o \
@@ -58,12 +46,38 @@ VCFLIB_DISORDER=../vcflib/smithwaterman/disorder.c
 all: $(PROG)
 
 samla: $(OBJS) $(VCFLIB_AR)
-	$(CXX) $^ -o $@ $(VCFLIB_DISORDER) $(LIBS) $(VCFLIB_LIBS) $(CXXFLAGS)
+	$(CXX) $^ -o $@ $(VCFLIB_DISORDER) $(LIBS) $(VCFLIB_LIBS) $(CXXFLAGS) $(PROG_O_FLAG)
 
 version.h: .FORCE
 	./git-getversion.sh > version.h
+	echo "#define CXXFLAGS \"$(CXXFLAGS)\"" >> version.h
 
 .FORCE:
+
+opt: samla-opt
+	$(MAKE) O_FLAG=-O2
+	mv samla $^
+
+samla-opt:
+
+profile: samla-profile
+	$(MAKE) P_FLAG=-pg
+	mv samla $^
+
+samla-profile:
+
+release: samla-release
+	$(MAKE) O_FLAG=-O2 D_FLAG=
+	mv samla $^
+
+samla-release:
+
+release-profile: samla-release-profile
+	$(MAKE) O_FLAG=-O2 D_FLAG= P_FLAG=-pg
+	mv samla $^
+
+samla-release-profile:
+
 
 #---------------------------  Individual object files
 
