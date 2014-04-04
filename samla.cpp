@@ -17,11 +17,11 @@
 //
 
 #define NAME "samla"
-#define VERSION "0.0.2"
+#include "version.h"
 
 // CHANGELOG
 //
-// 0.0.2 : Implement method 'gwa'
+// 0.0.2 : First implementation of 'gwa'
 //
 // 0.0.1 : Implement and lightly test VcfStripmine class
 
@@ -90,6 +90,11 @@ static double       opt_gwa_vqsr_quality = 30.0;
 static double       opt_gwa_lowqual_quality = 30.0;
 static double       opt_gwa_lowqual_quality_ref = 20.0;
 static double       opt_gwa_mixed_quality = 30.0;
+static double       opt_gwa_vqsr_context_quality = 30.0;
+static double       opt_gwa_lowqual_context_quality = 30.0;
+static double       opt_gwa_mixed_context_quality = 30.0;
+static bool         opt_gwa_disable_context_quality = false;
+static const double disabling_high_quality = 9999999999.0;
 static bool         opt_filter_annotate = true;
 static bool         opt_stdio = false;
 static size_t       opt_debug = 1;
@@ -557,6 +562,7 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
            o_filter_annotate, o_no_filter_annotate,
            o_vcf_genomic, o_vcf_wga, o_vcf_all, 
            o_gwa_window, o_gwa_quality, o_gwa_vqsr_quality, o_gwa_lowqual_quality, o_gwa_lowqual_quality_ref, o_gwa_mixed_quality,
+           o_gwa_vqsr_context_quality, o_gwa_lowqual_context_quality, o_gwa_mixed_context_quality, o_gwa_disable_context_quality,
            o_output, o_stdio, o_debug, o_progress, o_help };
 
     CSimpleOpt::SOption smorgas_options[] = {
@@ -579,6 +585,10 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
         { o_gwa_lowqual_quality,     "--gwa-lowqual-quality",     SO_REQ_SEP },
         { o_gwa_lowqual_quality_ref, "--gwa-lowqual-quality-ref", SO_REQ_SEP },
         { o_gwa_mixed_quality,       "--gwa-mixed-quality",       SO_REQ_SEP },
+        { o_gwa_vqsr_context_quality,    "--gwa-vqsr-context-quality",    SO_REQ_SEP },
+        { o_gwa_lowqual_context_quality, "--gwa-lowqual-context-quality", SO_REQ_SEP },
+        { o_gwa_mixed_context_quality,   "--gwa-mixed-context-quality",   SO_REQ_SEP },
+        { o_gwa_disable_context_quality, "--gwa-disable-context-quality", SO_NONE },
 
         { o_output,      "-o",            SO_REQ_SEP },  // output file
         { o_output,      "--output",      SO_REQ_SEP },
@@ -586,6 +596,7 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
         { o_debug,       "--debug",       SO_REQ_SEP },
         { o_progress,    "--progress",    SO_REQ_SEP },
         { o_help,        "--help",        SO_NONE },
+        { o_help,        "-h",            SO_NONE },
         { o_help,        "-?",            SO_NONE }, 
         SO_END_OF_OPTIONS
     };
@@ -616,11 +627,14 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
                 vcf_all = args.OptionArg(); break;
             case o_gwa_window:   
                 opt_gwa_window_size = args.OptionArg() ? atoi(args.OptionArg()) : opt_gwa_window_size; break;
+
             case o_gwa_quality:   
                 opt_gwa_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_quality; 
                 // set all quality threshholds to this value
                 opt_gwa_vqsr_quality = opt_gwa_lowqual_quality = opt_gwa_lowqual_quality_ref = opt_gwa_mixed_quality = opt_gwa_quality;
+                opt_gwa_vqsr_context_quality = opt_gwa_lowqual_context_quality = opt_gwa_mixed_context_quality = opt_gwa_quality;
                 break;
+
             case o_gwa_vqsr_quality:   
                 opt_gwa_vqsr_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_vqsr_quality; break;
             case o_gwa_lowqual_quality:   
@@ -629,6 +643,18 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
                 opt_gwa_lowqual_quality_ref = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_lowqual_quality_ref; break;
             case o_gwa_mixed_quality:   
                 opt_gwa_mixed_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_mixed_quality; break;
+
+            case o_gwa_vqsr_context_quality:
+                opt_gwa_vqsr_context_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_vqsr_context_quality; break;
+            case o_gwa_lowqual_context_quality:
+                opt_gwa_lowqual_context_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_lowqual_context_quality; break;
+            case o_gwa_mixed_context_quality:
+                opt_gwa_mixed_context_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_mixed_context_quality; break;
+            case o_gwa_disable_context_quality:
+                opt_gwa_disable_context_quality = true;
+                opt_gwa_vqsr_context_quality = opt_gwa_lowqual_context_quality = opt_gwa_mixed_context_quality = disabling_high_quality; 
+                break;
+
             case o_output:   
                 output_file = args.OptionArg(); break;
             case o_stdio:    
@@ -733,13 +759,18 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << "     --gwa-lowqual-quality-ref FLOAT  minimum quality to meet when combining LowQual variants and call matches reference [" << opt_gwa_lowqual_quality_ref << "]" << endl;
     cerr << "     --gwa-mixed-quality FLOAT        minimum quality when combining VQSR with LowQual variants [" << opt_gwa_mixed_quality << "]" << endl;
     cerr << endl;
+    cerr << "     --gwa-vqsr-context-quality FLOAT     minimum quality when examining contextual quality for VQSR variants [" << opt_gwa_vqsr_context_quality << "]" << endl;
+    cerr << "     --gwa-lowqual-context-quality FLOAT  minimum quality when examining contextual quality for LowQual variants and call does not match reference [" << opt_gwa_lowqual_context_quality << "]" << endl;
+    cerr << "     --gwa-mixed-context-quality FLOAT    minimum quality when examining contextual quality for VQSR with LowQual variants [" << opt_gwa_mixed_context_quality << "]" << endl;
+    cerr << "     --gwa-disable-context-quality        disables context quality by setting all --gwa-*-context-quality values to a very high value [" << disabling_high_quality << "]" << endl;
+    cerr << endl;
     cerr << "For 'gwa', all VCF files must be specified using these options:" << endl;
     cerr << endl;
     cerr << "     --vcf-genomic FILE           VCF file containing genomic calls" << endl;
     cerr << "     --vcf-wga FILE               VCF file containing whole-genome-amplified calls" << endl;
     cerr << "     --vcf-all FILE               VCF file containing all (pooled) calls" << endl;
     cerr << endl;
-    cerr << "     -? | --help                  help" << endl;
+    cerr << "     -h | -? | --help             help" << endl;
     cerr << endl;
     exit(EXIT_FAILURE);
 }
@@ -1465,13 +1496,13 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     double qdelta_Wga = (v_Wga.quality - qualwindow_Wga.mean());
     double qdelta_All = (v_All.quality - qualwindow_All.mean());
     double qdelta_Contextual = abs(qdelta_Gen) + abs(qdelta_Wga);
-    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_vqsr_quality);
+    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_vqsr_context_quality);
     if (DEBUG(1)) {
         fprintf(stderr, "3 G quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen);
         fprintf(stderr, "3 W quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga);
         fprintf(stderr, "3 A quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
         fprintf(stderr, "3                   Contextual abs(G)+abs(W) quality delta: %9.4f ", qdelta_Contextual);
-        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-vqsr-quality=" << opt_gwa_vqsr_quality << endl;
+        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-vqsr-context-quality=" << opt_gwa_vqsr_context_quality << endl;
     }
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         // v_All does not have a variant, is this good or bad?
@@ -1563,14 +1594,14 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     double qdelta_Wga = (v_Wga.quality - qualwindow_Wga.mean());
     double qdelta_All = (v_All.quality - qualwindow_All.mean());
     double qdelta_Contextual = abs(qdelta_Gen) + abs(qdelta_Wga);
-    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_lowqual_quality);
+    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_lowqual_context_quality);
     bool   passedQualityRef = (v_Gen.quality + v_Wga.quality >= opt_gwa_lowqual_quality_ref);
     if (DEBUG(1)) {
         fprintf(stderr, "4 G quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen);
         fprintf(stderr, "4 W quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga);
         fprintf(stderr, "4 A quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
         fprintf(stderr, "4                   Contextual abs(G)+abs(W) quality delta: %9.4f ", qdelta_Contextual);
-        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-lowqual-quality=" << opt_gwa_lowqual_quality << endl;
+        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-lowqual-context-quality=" << opt_gwa_lowqual_context_quality << endl;
     }
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         // v_All does not have a variant, is this good or bad?
@@ -1688,13 +1719,13 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     double qdelta_Wga = (v_Wga.quality - qualwindow_Wga.mean());
     double qdelta_All = (v_All.quality - qualwindow_All.mean());
     double qdelta_Contextual = abs(qdelta_Gen) + abs(qdelta_Wga);
-    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_mixed_quality);
+    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_mixed_context_quality);
     if (DEBUG(1)) {
         fprintf(stderr, "5 G quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen);
         fprintf(stderr, "5 W quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga);
         fprintf(stderr, "5 A quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
         fprintf(stderr, "5                   Contextual abs(G)+abs(W) quality delta: %9.4f ", qdelta_Contextual);
-        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-mixed-quality=" << opt_gwa_mixed_quality << endl;
+        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-mixed-context-quality=" << opt_gwa_mixed_context_quality << endl;
     }
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         // v_All does not have a variant, is this good or bad?

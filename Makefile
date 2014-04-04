@@ -14,7 +14,8 @@ VCFLIB_LIBS=-L../vcflib/tabixpp/ -ltabix
 
 OBJS=		samla.o
 
-HEAD_COMM=  SimpleOpt.h \
+HEAD_COMM=  version.h \
+			SimpleOpt.h \
 			../vcflib/src/Variant.h \
 			../vcflib/src/split.h \
 			../vcflib/src/join.h
@@ -59,6 +60,10 @@ all: $(PROG)
 samla: $(OBJS) $(VCFLIB_AR)
 	$(CXX) $^ -o $@ $(VCFLIB_DISORDER) $(LIBS) $(VCFLIB_LIBS) $(CXXFLAGS)
 
+version.h: .FORCE
+	./git-getversion.sh > version.h
+
+.FORCE:
 
 #---------------------------  Individual object files
 
