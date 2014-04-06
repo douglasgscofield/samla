@@ -1,7 +1,14 @@
+# Makefile uses recursive $(MAKE) to build separate versions.
+#
+#   all (default):   debug version unoptimised (O_FLAG=-O0)
+#   opt:             debug version optimised (O_FLAG=-O2)
+#   profile:         default with gprof profiling (P_FLAG=-pg)
+#   release:         no debug optimised (D_FLAG= O_FLAG=-O2)
+#   release-profile: no debug optimised (D_FLAG= O_FLAG=-O2 P_FLAG=-pg)
 
 CXX=		g++
-O_FLAG=         -O0
-D_FLAG=         -D_WITH_DEBUG -ggdb -g3 -fvar-tracking-assignments -fno-inline -fno-inline-small-functions -fno-eliminate-unused-debug-types
+O_FLAG=     -O0
+D_FLAG=     -D_WITH_DEBUG -ggdb -g3 -fvar-tracking-assignments -fno-inline -fno-inline-small-functions -fno-eliminate-unused-debug-types
 P_FLAG=         
 CXXFLAGS=	-I../vcflib -Wall -D_FILE_OFFSET_BITS=64 $(O_FLAG) $(D_FLAG) $(P_FLAG)
 
@@ -36,9 +43,12 @@ VCFLIB_OTHER_OBJS=../vcflib/smithwaterman/SmithWatermanGotoh.o \
 			../vcflib/tabixpp/tabix.o \
 			../vcflib/tabixpp/bgzf.o
 VCFLIB_DISORDER=../vcflib/smithwaterman/disorder.c
-# TODO: disorder.c is compiled fresh each time which is wasteful, should probably
-# have extern "C" around it within vcflib... but that breaks its own compilation
-# within other parts of vcflib.
+# NOTE: disorder.c is compiled fresh each time which seems wasteful, but it is C
+# source, and is built in its own program as pure C, whereas it is build with
+# other programs including vcflib as if it were C++.  If we always built as pure
+# C then we would have to situationally have extern "C" around it.  It is smoother
+# to simply build it new each time it is needed.  This is an issue inherited from
+# vcflib.
 
 #---------------------------  Main program
 
