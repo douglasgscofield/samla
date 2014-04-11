@@ -23,6 +23,8 @@
 
 // CHANGELOG
 //
+// 0.0.3 : Reimplementation of cases 3 4 5
+//
 // 0.0.2 : First implementation of 'gwa'
 //
 // 0.0.1 : Implement and lightly test VcfStripmine class
