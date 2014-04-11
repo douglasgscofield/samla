@@ -909,18 +909,18 @@ enum culpritCase_t { culprit_fail = 0, culprit_pass_A, culprit_pass_B, culprit_p
 
 static culpritCase_t
 culpritCase(Variant& v_A, Variant& v_B) {
-    if (! v_A.info.count("culprit") || !v_A.info.count("culprit")) {
-        cerr << "culpritCase(A,B): no culprit when we expected one" << endl; exit(1);
-    }
+    //if (! v_A.info.count("culprit") || !v_A.info.count("culprit")) {
+    //    cerr << "culpritCase(A,B): no culprit when we expected one" << endl; exit(1);
+    //}
     string& a = v_A.info["culprit"][0];
     string& b = v_B.info["culprit"][0];
-    if ((a == "MQRankSum" || a == "ReadPosRankSum") && (b == "MQRankSum" || a == "ReadPosRankSum")) {
+    if ((a == "MQRankSum" || a == "ReadPosRankSum") && (b == "MQRankSum" || b == "ReadPosRankSum")) {
         return culprit_fail;
-    } else if ((a == "DP" || a == "FS" || a == "QD") && (b == "MQRankSum" || a == "ReadPosRankSum")) {
+    } else if ((a == "DP" || a == "FS" || a == "QD") && (b == "MQRankSum" || b == "ReadPosRankSum")) {
         return culprit_pass_A;
-    } else if ((a == "MQRankSum" || a == "ReadPosRankSum") && (b == "QD" || b == "FS" || b == "QD")) {
+    } else if ((a == "MQRankSum" || a == "ReadPosRankSum") && (b == "DP" || b == "FS" || b == "QD")) {
         return culprit_pass_B;
-    } else if ((a == "DP" || a == "FS" || a == "QD") && (b == "QD" || b == "FS" || b == "QD")) {
+    } else if ((a == "DP" || a == "FS" || a == "QD") && (b == "DP" || b == "FS" || b == "QD")) {
         return culprit_pass_AB;
     } else {
         cerr << "culpritCase(): unhandled case a = " << a << " b = " << b << endl;
@@ -930,9 +930,9 @@ culpritCase(Variant& v_A, Variant& v_B) {
 
 static culpritCase_t
 culpritCase(Variant& v_A) {
-    if (v_A.info.count("culprit")) {
-        cerr << "culpritCase(A): no culprit when we expected one" << endl; exit(1);
-    }
+    //if (v_A.info.count("culprit")) {
+    //    cerr << "culpritCase(A): no culprit when we expected one" << endl; exit(1);
+    //}
     string& a = v_A.info["culprit"][0];
     if (a == "MQRankSum" || a == "ReadPosRankSum") {
         return culprit_fail;
@@ -1593,7 +1593,7 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             }
             v_ANS.info["Samla"].push_back("NoSnp_A");
 
-        } else if (v_All.info["VariantType"][0] == "SNP") {
+        } else if (v_All.info["VariantType"][0] == "SNP" || v_All.info["VariantType"][0] == "MULTIALLELIC_SNP") {
 
             // A contains a variant, update its quality to reflect the combination
             v_ANS = v_All;
@@ -1684,7 +1684,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
         // There is a variant here, do we have one available in A?
 
-        if (v_All.info["VariantType"][0] == "SNP") {
+        if (v_All.info["VariantType"][0] == "SNP" || v_All.info["VariantType"][0] == "MULTIALLELIC_SNP") {
 
             // use the variant in A
             v_ANS = v_All;
@@ -1785,7 +1785,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             annotate_4_passedQualityRef("GWA4_A");
             v_ANS.info["Samla"].push_back("NoSnp_A");
 
-        } else if (v_All.info["VariantType"][0] == "SNP") {
+        } else if (v_All.info["VariantType"][0] == "SNP" || v_All.info["VariantType"][0] == "MULTIALLELIC_SNP") {
 
             // if G or W do not contain a variant, use the one of higher quality
             // if both contains a variant, we have to fail the site
@@ -1896,7 +1896,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     double qdelta_All = (v_All.quality - qualwindow_All.mean());
     double q_Gen = (v_Gen.filter == "LowQual" && ! opt_gwa_disable_context_quality) ? abs(qdelta_Gen) : v_Gen.quality;
     double q_Wga = (v_Wga.filter == "LowQual" && ! opt_gwa_disable_context_quality) ? abs(qdelta_Wga) : v_Wga.quality;
-    culpritCase_t vqsr_culprit = (v_Gen.filter == "LowQual") ? culpritCase(v_Gen) : culpritCase(v_Wga);
+    culpritCase_t vqsr_culprit = (v_Gen.filter == "LowQual") ? culpritCase(v_Wga) : culpritCase(v_Gen);
     string culprit_string = (v_Gen.filter == "LowQual") ? generate_culprit_string(v_Gen) : generate_culprit_string(v_Wga);
     double q_site = q_Gen + q_Wga;
     bool   passedQuality = (q_site >= opt_gwa_mixed_quality);
@@ -1934,7 +1934,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
         // There is a variant here, do we have one available in A?
 
-        if (v_All.info["VariantType"][0] == "SNP") {
+        if (v_All.info["VariantType"][0] == "SNP" || v_All.info["VariantType"][0] == "MULTIALLELIC_SNP") {
 
             // use the variant in A
             v_ANS = v_All;
@@ -2034,7 +2034,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             annotate_5_passedQualityRef("GWA5_A");
             v_ANS.info["Samla"].push_back("NoSnp_A");
 
-        } else if (v_All.info["VariantType"][0] == "SNP") {
+        } else if (v_All.info["VariantType"][0] == "SNP" || v_All.info["VariantType"][0] == "MULTIALLELIC_SNP") {
 
             // if G or W do not contain a variant, use the one of higher quality
             // if both contains a variant, we have to fail the site
