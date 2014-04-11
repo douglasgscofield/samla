@@ -16,6 +16,8 @@
 //     e.g. if VCF had genotype ./. output this instead of .
 //
 
+// TODO Must study consistency of context quality
+
 #define NAME "samla"
 #include "version.h"
 
@@ -90,11 +92,8 @@ static double       opt_gwa_vqsr_quality = 30.0;
 static double       opt_gwa_lowqual_quality = 30.0;
 static double       opt_gwa_lowqual_quality_ref = 20.0;
 static double       opt_gwa_mixed_quality = 30.0;
-static double       opt_gwa_vqsr_context_quality = 30.0;
-static double       opt_gwa_lowqual_context_quality = 30.0;
-static double       opt_gwa_mixed_context_quality = 30.0;
+static double       opt_gwa_mixed_quality_ref = 20.0;
 static bool         opt_gwa_disable_context_quality = false;
-static const double disabling_high_quality = 9999999999.0;
 static bool         opt_filter_annotate = true;
 static bool         opt_stdio = false;
 static size_t       opt_debug = 1;
@@ -561,8 +560,10 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
     enum { o_references, o_method, 
            o_filter_annotate, o_no_filter_annotate,
            o_vcf_genomic, o_vcf_wga, o_vcf_all, 
-           o_gwa_window, o_gwa_quality, o_gwa_vqsr_quality, o_gwa_lowqual_quality, o_gwa_lowqual_quality_ref, o_gwa_mixed_quality,
-           o_gwa_vqsr_context_quality, o_gwa_lowqual_context_quality, o_gwa_mixed_context_quality, o_gwa_disable_context_quality,
+           o_gwa_window, o_gwa_quality, o_gwa_vqsr_quality, 
+           o_gwa_lowqual_quality, o_gwa_lowqual_quality_ref, 
+           o_gwa_mixed_quality, o_gwa_mixed_quality_ref,
+           o_gwa_disable_context_quality,
            o_output, o_stdio, o_debug, o_progress, o_help };
 
     CSimpleOpt::SOption smorgas_options[] = {
@@ -585,9 +586,7 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
         { o_gwa_lowqual_quality,     "--gwa-lowqual-quality",     SO_REQ_SEP },
         { o_gwa_lowqual_quality_ref, "--gwa-lowqual-quality-ref", SO_REQ_SEP },
         { o_gwa_mixed_quality,       "--gwa-mixed-quality",       SO_REQ_SEP },
-        { o_gwa_vqsr_context_quality,    "--gwa-vqsr-context-quality",    SO_REQ_SEP },
-        { o_gwa_lowqual_context_quality, "--gwa-lowqual-context-quality", SO_REQ_SEP },
-        { o_gwa_mixed_context_quality,   "--gwa-mixed-context-quality",   SO_REQ_SEP },
+        { o_gwa_mixed_quality_ref,   "--gwa-mixed-quality-ref",   SO_REQ_SEP },
         { o_gwa_disable_context_quality, "--gwa-disable-context-quality", SO_NONE },
 
         { o_output,      "-o",            SO_REQ_SEP },  // output file
@@ -631,8 +630,7 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
             case o_gwa_quality:   
                 opt_gwa_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_quality; 
                 // set all quality threshholds to this value
-                opt_gwa_vqsr_quality = opt_gwa_lowqual_quality = opt_gwa_lowqual_quality_ref = opt_gwa_mixed_quality = opt_gwa_quality;
-                opt_gwa_vqsr_context_quality = opt_gwa_lowqual_context_quality = opt_gwa_mixed_context_quality = opt_gwa_quality;
+                opt_gwa_vqsr_quality = opt_gwa_lowqual_quality = opt_gwa_lowqual_quality_ref = opt_gwa_mixed_quality = opt_gwa_mixed_quality_ref = opt_gwa_quality;
                 break;
 
             case o_gwa_vqsr_quality:   
@@ -643,16 +641,11 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
                 opt_gwa_lowqual_quality_ref = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_lowqual_quality_ref; break;
             case o_gwa_mixed_quality:   
                 opt_gwa_mixed_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_mixed_quality; break;
+            case o_gwa_mixed_quality_ref:   
+                opt_gwa_mixed_quality_ref = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_mixed_quality_ref; break;
 
-            case o_gwa_vqsr_context_quality:
-                opt_gwa_vqsr_context_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_vqsr_context_quality; break;
-            case o_gwa_lowqual_context_quality:
-                opt_gwa_lowqual_context_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_lowqual_context_quality; break;
-            case o_gwa_mixed_context_quality:
-                opt_gwa_mixed_context_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_mixed_context_quality; break;
             case o_gwa_disable_context_quality:
                 opt_gwa_disable_context_quality = true;
-                opt_gwa_vqsr_context_quality = opt_gwa_lowqual_context_quality = opt_gwa_mixed_context_quality = disabling_high_quality; 
                 break;
 
             case o_output:   
@@ -756,11 +749,9 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << "     --gwa-lowqual-quality FLOAT      minimum quality when combining LowQual variants and call does not match reference [" << opt_gwa_lowqual_quality << "]" << endl;
     cerr << "     --gwa-lowqual-quality-ref FLOAT  minimum quality to meet when combining LowQual variants and call matches reference [" << opt_gwa_lowqual_quality_ref << "]" << endl;
     cerr << "     --gwa-mixed-quality FLOAT        minimum quality when combining VQSR with LowQual variants [" << opt_gwa_mixed_quality << "]" << endl;
+    cerr << "     --gwa-mixed-quality-ref FLOAT    minimum quality to meet when combining VQSR with LowQual variants and call matches reference [" << opt_gwa_mixed_quality_ref << "]" << endl;
     cerr << endl;
-    cerr << "     --gwa-vqsr-context-quality FLOAT     minimum quality when examining contextual quality for VQSR variants [" << opt_gwa_vqsr_context_quality << "]" << endl;
-    cerr << "     --gwa-lowqual-context-quality FLOAT  minimum quality when examining contextual quality for LowQual variants and call does not match reference [" << opt_gwa_lowqual_context_quality << "]" << endl;
-    cerr << "     --gwa-mixed-context-quality FLOAT    minimum quality when examining contextual quality for VQSR with LowQual variants [" << opt_gwa_mixed_context_quality << "]" << endl;
-    cerr << "     --gwa-disable-context-quality        disables context quality by setting all --gwa-*-context-quality values to a very high value [" << disabling_high_quality << "]" << endl;
+    cerr << "     --gwa-disable-context-quality        disables usage of context quality, qualities instead compared directly" << endl;
     cerr << endl;
     cerr << "For 'gwa', all VCF files must be specified using these options:" << endl;
     cerr << endl;
@@ -912,6 +903,62 @@ generate_gwa_qual_string(const Variant& v_Gen, const Variant& v_Wga, const Varia
 }
 
 
+enum culpritCase_t { culprit_fail = 0, culprit_pass_A, culprit_pass_B, culprit_pass_AB };
+
+static culpritCase_t
+culpritCase(Variant& v_A, Variant& v_B) {
+    if (! v_A.info.count("culprit") || !v_A.info.count("culprit")) {
+        cerr << "culpritCase(A,B): no culprit when we expected one" << endl; exit(1);
+    }
+    string& a = v_A.info["culprit"][0];
+    string& b = v_B.info["culprit"][0];
+    if ((a == "MQRankSum" || a == "ReadPosRankSum") && (b == "MQRankSum" || a == "ReadPosRankSum")) {
+        return culprit_fail;
+    } else if ((a == "DP" || a == "FS" || a == "QD") && (b == "MQRankSum" || a == "ReadPosRankSum")) {
+        return culprit_pass_A;
+    } else if ((a == "MQRankSum" || a == "ReadPosRankSum") && (b == "QD" || b == "FS" || b == "QD")) {
+        return culprit_pass_B;
+    } else if ((a == "DP" || a == "FS" || a == "QD") && (b == "QD" || b == "FS" || b == "QD")) {
+        return culprit_pass_AB;
+    } else {
+        cerr << "culpritCase(): unhandled case a = " << a << " b = " << b << endl;
+        exit(1);
+    }
+}
+
+static culpritCase_t
+culpritCase(Variant& v_A) {
+    if (v_A.info.count("culprit")) {
+        cerr << "culpritCase(A): no culprit when we expected one" << endl; exit(1);
+    }
+    string& a = v_A.info["culprit"][0];
+    if (a == "MQRankSum" || a == "ReadPosRankSum") {
+        return culprit_fail;
+    } else if (a == "DP" || a == "FS" || a == "QD") {
+        return culprit_pass_A;
+    } else {
+        cerr << "culpritCase(): unhandled case a = " << a << endl;
+        exit(1);
+    }
+}
+
+string
+generate_culprit_string(Variant& v_Gen, Variant& v_Wga) {
+    stringstream ss;
+    ss << "culprits-";
+    ss << "G:" << ((v_Gen.info.count("culprit")) ? v_Gen.info["culprit"][0] : "none") << ";";
+    ss << "W:" << ((v_Wga.info.count("culprit")) ? v_Wga.info["culprit"][0] : "none");
+    return(ss.str());
+}
+
+string
+generate_culprit_string(Variant& v_A) {
+    stringstream ss;
+    ss << "culprit-A:" << ((v_A.info.count("culprit")) ? v_A.info["culprit"][0] : "none");
+    return(ss.str());
+}
+
+
 void
 set_filter(Variant& v, const string& filter) {
     v.filter = filter;
@@ -1018,7 +1065,6 @@ bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
 
         v_ANS = method_gwa_case4(v_Gen, v_Wga, v_All);
 
-// must add 5
     } else if ((v_Gen.filter.substr(0, 4) == "VQSR" && v_Wga.filter == "LowQual")
                ||
                (v_Gen.filter == "LowQual" && v_Wga.filter.substr(0, 4) == "VQSR")) {         // CASE 5
@@ -1084,6 +1130,18 @@ bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
 
     return(true);
 }
+
+
+// Note that VQSR can remove a SNP that otherwise has incredibly strong support, say for
+// reasons of strand bias or mapping quality or read position bias.  Some of these reasons
+// are expected to be stochastic and thus specific to a library, whereas others may be
+// site-specific.
+//
+// FS: strand bias, library-specific
+// DP: depth, library-specific
+// QD: quality depth, library-specific
+// MQRankSum: mapping quality rank sum, may be site-specific
+// ReadPosRankSum: segment of read supporting variant, may be site-specific
 
 /*********************** Current set of case labels
 
@@ -1387,6 +1445,7 @@ GWA9_W  : G no-variant, W no-variant, A *is* variant, W emitted : Emit W no-vari
 
 Variant
 method_gwa_case1(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+
     // Combine strength from v_Gen and v_Wga.  Start with v_All, genotypes and
     // info stats are good, but adjust variant quality to be the sum of v_Gen
     // and v_Wga
@@ -1427,8 +1486,10 @@ method_gwa_case1(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
 Variant
 method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+
     // Combine strength from both, using straight quality for the variant and
-    // contextual quality for the filtered one.
+    // contextual quality for the filtered one if LowQual and straight quality
+    // if VQSR.
     if (DEBUG(2)) cout << "*** case 2_G method_gwa_case2_G()" << endl;
     Variant v_ANS;
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
@@ -1446,8 +1507,16 @@ method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_filter(v_ANS, "GWA2_G_A");
         v_ANS.info["Samla"].push_back("Snp_A");
     }
-    v_ANS.quality = v_Gen.quality + abs(v_Wga.quality - qualwindow_Wga.mean());
-    v_ANS.info["Samla"].push_back("Qual_G+WContext");
+    v_ANS.quality = v_Gen.quality;
+    if (v_Wga.filter.substr(0, 4) == "VQSR") {
+        v_ANS.quality += v_Wga.quality;
+        v_ANS.info["Samla"].push_back("Qual_G+W");
+    } else if (v_Wga.filter == "LowQual") {
+        v_ANS.quality += abs(v_Wga.quality - qualwindow_Wga.mean());
+        v_ANS.info["Samla"].push_back("Qual_G+WContext");
+    } else {
+        cerr << "**2_G* unhandled v_Wga.filter case" << endl; exit(1);
+    }
     return(v_ANS);
 }
 
@@ -1457,8 +1526,10 @@ method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
 Variant
 method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+
     // Combine strength from both, using straight quality for the variant and
-    // contextual quality for the filtered one.
+    // contextual quality for the filtered one if LowQual and straight quality
+    // if VQSR.
     if (DEBUG(2)) cout << "*** case 2_W method_gwa_case2_W()" << endl;
     Variant v_ANS;
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
@@ -1476,115 +1547,98 @@ method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_filter(v_ANS, "GWA2_W_A");
         v_ANS.info["Samla"].push_back("Snp_A");
     }
-    v_ANS.quality = abs(v_Gen.quality - qualwindow_Gen.mean()) + v_Wga.quality;
-    v_ANS.info["Samla"].push_back("Qual_W+GContext");
+    v_ANS.quality = v_Wga.quality;
+    if (v_Gen.filter.substr(0, 4) == "VQSR") {
+        v_ANS.quality += v_Gen.quality;
+        v_ANS.info["Samla"].push_back("Qual_W+G");
+    } else if (v_Gen.filter == "LowQual") {
+        v_ANS.quality += abs(v_Gen.quality - qualwindow_Gen.mean());
+        v_ANS.info["Samla"].push_back("Qual_W+GContext");
+    } else {
+        cerr << "**2_W* unhandled v_Gen.filter case" << endl; exit(1);
+    }
     return(v_ANS);
 }
 
 
-// -------- 3  VQSR genotypes for both v_Gen and v_Wga, so do we pass a threshold to emit a genotype?
+// -------- 3  VQSR genotypes for both v_Gen and v_Wga, so we likely have a variant here
 
 
 Variant
 method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+
     if (DEBUG(2)) cout << "*** case 3 method_gwa_case3()" << endl;
     Variant v_ANS;
-    if (DEBUG(3)) {
-        cerr << "G "; qualwindow_Gen.dump(10, 1);
-        cerr << "W "; qualwindow_Wga.dump(10, 1);
-        cerr << "A "; qualwindow_All.dump(10, 1);
-    }
-    double qdelta_Gen = (v_Gen.quality - qualwindow_Gen.mean());
-    double qdelta_Wga = (v_Wga.quality - qualwindow_Wga.mean());
-    double qdelta_All = (v_All.quality - qualwindow_All.mean());
-    double qdelta_Contextual = abs(qdelta_Gen) + abs(qdelta_Wga);
-    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_vqsr_context_quality);
-    if (DEBUG(1)) {
-        fprintf(stderr, "3 G quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen);
-        fprintf(stderr, "3 W quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga);
-        fprintf(stderr, "3 A quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
-        fprintf(stderr, "3                   Contextual abs(G)+abs(W) quality delta: %9.4f ", qdelta_Contextual);
-        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-vqsr-context-quality=" << opt_gwa_vqsr_context_quality << endl;
-    }
-    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
-        // v_All does not have a variant, is this good or bad?
-        v_ANS = v_All;
-        v_ANS.quality = qdelta_Contextual;
-        v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-        v_ANS.info["Samla"].push_back("NoSnp_A");
-        if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
-            // We think there should be a variant here, because of the drop in
-            // contextual quality for both Gen and Wga that passes the quality
-            // filter, but we cannot see it because GATK doesn't emit complete
-            // information.
-            set_filter(v_ANS, "FAIL");
-            annotate_filter(v_ANS, "GWA3_A_UNCALLED_Fail");
-            v_ANS.info["Samla"].push_back("PASS_ContextQual");
-            v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
-        } else if (passedContextualQuality) {  // contextual is inconsistent
-            set_filter(v_ANS, "FAIL");
-            annotate_filter(v_ANS, "GWA3_A_UNCALLED_FailInconsistent");
-            v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
-        } else {  // mixed bag, either contextual is too low or inconsistent
-            set_filter(v_ANS, "FAIL");
-            annotate_filter(v_ANS, "GWA3_A_UNCALLED_FailLowQual");
-            v_ANS.info["Samla"].push_back("Fail_ContextQual");
-        }
-    } else {  
-        // v_All has a variant, but we don't yet know if we accept it
-        if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
-            // We accept the v_All variant
+
+    // check to see if the VQSR reasons were "stochastic" (FS, QD, DP) and allow us to emit a variant
+    culpritCase_t vqsr_culprits = culpritCase(v_Gen, v_Wga);
+
+    if (vqsr_culprits != culprit_fail) {
+
+        if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+
+            // unfortunately A does not think we have a variant, pick the best of the others
+            if (v_Gen.quality >= v_Wga.quality) {
+                v_ANS = v_Gen;
+                set_filter(v_ANS, "PASS");
+                annotate_filter(v_ANS, "GWA3_G");
+                v_ANS.info["Samla"].push_back("Qual_G");  // quality inherited by copying v_Gen
+            } else {
+                v_ANS = v_Wga;
+                set_filter(v_ANS, "PASS");
+                annotate_filter(v_ANS, "GWA3_W");
+                v_ANS.info["Samla"].push_back("Qual_W");  // quality inherited by copying v_Wga
+            }
+            v_ANS.info["Samla"].push_back("NoSnp_A");
+
+        } else if (v_All.info["VariantType"][0] == "SNP") {
+
+            // A contains a variant, update its quality to reflect the combination
             v_ANS = v_All;
+            v_ANS.quality = v_Gen.quality + v_Wga.quality;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA3_A_CALLED_Pass");
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("PASS_ContextQual");
+            annotate_filter(v_ANS, "GWA3_A");
+            v_ANS.info["Samla"].push_back("Qual_G+W");
             v_ANS.info["Samla"].push_back("AcceptSnp_A");
-        } else if (passedContextualQuality) {  // contextual is inconsistent
-            // We can't accept the v_All Variant, build on the entry with higher quality
-            if (v_Gen.quality >= v_Wga.quality) {
-                v_ANS = v_Gen;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA3_G_CALLED_FailInconsistent");
-            } else {
-                v_ANS = v_Wga;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA3_W_CALLED_FailInconsistent");
-            }
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
-            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+
         } else {
-            // We can't accept the v_All Variant, build on the entry with higher quality
-            if (v_Gen.quality >= v_Wga.quality) {
-                v_ANS = v_Gen;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA3_G_CALLED_FailLowQual");
-            } else {
-                v_ANS = v_Wga;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA3_W_CALLED_FailLowQual");
-            }
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("Fail_ContextQual");
-            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+
+            cerr << "**3* unhandled v_All VariantType case: " << v_All.info["VariantType"][0] << endl; 
+            exit(1);
+
         }
+
+        string annot("culpritPass");
+        char buf[10]; sprintf(buf, "%d", (int)vqsr_culprits);
+        annotate_filter(v_ANS, annot + buf);
+        // annotate_filter(v_ANS, "culpritPass");
+
+    } else { // culprit_fail
+
+        // Accept whatever A contains, but fail the site.
+        v_ANS = v_All;
+        set_filter(v_ANS, "FAIL");
+        annotate_filter(v_ANS, "GWA3_A");
+        v_ANS.info["Samla"].push_back("Qual_A");
+        annotate_filter(v_ANS, "culpritFail");
+
     }
-    v_ANS.info["SamlaContextQual"].push_back(generate_gwa_qual_string(v_Gen, v_Wga, v_All));
+
+    // annotate with the culprit values
+    annotate_filter(v_ANS, generate_culprit_string(v_Gen, v_Wga));
+
     return(v_ANS);
 }
 
 
 // -------- 4  LowQual genotypes for both v_Gen and v_Wga, so do we pass a threshold to emit a genotype?
-// TODO: combine with case 3 but parameterise it using case name and opt_gwa_*_quality, unless
-// we think we will do more specific stuff for cases 3 and/or 4?
+//
+// This should not be combined with case 3 because of its use of contextual quality, which case 3 does not use
 
 
 Variant
 method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+
     if (DEBUG(2)) cout << "*** case 4 method_gwa_case4()" << endl;
     Variant v_ANS;
     if (DEBUG(3)) {
@@ -1595,112 +1649,229 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     double qdelta_Gen = (v_Gen.quality - qualwindow_Gen.mean());
     double qdelta_Wga = (v_Wga.quality - qualwindow_Wga.mean());
     double qdelta_All = (v_All.quality - qualwindow_All.mean());
-    double qdelta_Contextual = abs(qdelta_Gen) + abs(qdelta_Wga);
-    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_lowqual_context_quality);
+    double q_Gen = (! opt_gwa_disable_context_quality) ? abs(qdelta_Gen) : v_Gen.quality;
+    double q_Wga = (! opt_gwa_disable_context_quality) ? abs(qdelta_Wga) : v_Wga.quality;
+    double q_site = q_Gen + q_Wga;
+    bool   passedQuality = (q_site >= opt_gwa_lowqual_quality);
     bool   passedQualityRef = (v_Gen.quality + v_Wga.quality >= opt_gwa_lowqual_quality_ref);
     if (DEBUG(1)) {
-        fprintf(stderr, "4 G quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen);
-        fprintf(stderr, "4 W quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga);
-        fprintf(stderr, "4 A quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
-        fprintf(stderr, "4                   Contextual abs(G)+abs(W) quality delta: %9.4f ", qdelta_Contextual);
-        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-lowqual-context-quality=" << opt_gwa_lowqual_context_quality << endl;
+        fprintf(stderr, "5 G quality: %9.4f  lookback: %9.4f  delta: %9.4f  q_Gen: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen, q_Gen);
+        fprintf(stderr, "5 W quality: %9.4f  lookback: %9.4f  delta: %9.4f  q_Wga: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga, q_Wga);
+        fprintf(stderr, "5 A quality: %9.4f  lookback: %9.4f  delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
+        fprintf(stderr, "5                   q_site G + W delta: %9.4f ", q_site);
+        cerr << "passedQuality " << (passedQuality ? "PASSED" : "FAILED") << " gwa-lowqual-quality=" << opt_gwa_lowqual_quality << endl;
+        cerr << "passedQualityRef " << (passedQualityRef ? "PASSED" : "FAILED") << " gwa-lowqual-quality-ref=" << opt_gwa_lowqual_quality_ref << endl;
     }
-    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
-        // v_All does not have a variant, is this good or bad?
-        v_ANS = v_All;
-        v_ANS.info["Samla"].push_back("NoSnp_A");
-        if (! passedContextualQuality && passedQualityRef) {
-            // We do not think we have a variant here, we think we should match the reference
-            set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA4_A_UNCALLED_Pass_QualityRef");
-            v_ANS.quality = v_Gen.quality + v_Wga.quality;
-            v_ANS.info["Samla"].push_back("Qual_G+W");
-            v_ANS.info["Samla"].push_back("PASS_QualityRef");
-        } else if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
-            // We think there should be a variant here, because of the drop in
-            // contextual quality for both Gen and Wga that passes the quality
-            // filter, but we cannot see it because GATK doesn't emit complete
-            // information.
-            set_filter(v_ANS, "FAIL");
-            annotate_filter(v_ANS, "GWA4_A_UNCALLED_Fail");
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("PASS_ContextQual");
-            v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
-        } else if (passedContextualQuality) {  // contextual is inconsistent
-            set_filter(v_ANS, "FAIL");
-            annotate_filter(v_ANS, "GWA4_A_UNCALLED_FailInconsistent");
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
-        } else {  // mixed bag, either contextual is too low or inconsistent
-            set_filter(v_ANS, "FAIL");
-            annotate_filter(v_ANS, "GWA4_A_UNCALLED_FailLowQual");
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("Fail_ContextQual");
-        }
-    } else {  
-        // v_All has a variant, but we don't yet know if we accept it
-        if (! passedContextualQuality && passedQualityRef) {
-            // We think we should actually match the reference
-            if (v_Gen.quality >= v_Wga.quality) {
-                v_ANS = v_Gen;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA4_G_CALLED_Fail_QualityRef");
-                v_ANS.info["Samla"].push_back("NoSnp_G");
-            } else {
-                v_ANS = v_Wga;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA4_W_CALLED_Fail_QualityRef");
-                v_ANS.info["Samla"].push_back("NoSnp_W");
+
+    if (passedQuality) {
+
+#define annotate_4_passedQuality(__S__) \
+            { \
+                string annot(__S__); \
+                if (opt_gwa_disable_context_quality) { \
+                    annot += "_Q"; \
+                    v_ANS.info["Samla"].push_back("Qual_G+W"); \
+                    v_ANS.info["Samla"].push_back("PASS_Qual"); \
+                } else { \
+                    annot += "_CQ"; \
+                    v_ANS.info["Samla"].push_back("Qual_GContext+WContext"); \
+                    v_ANS.info["Samla"].push_back("PASS_ContextQual"); \
+                } \
+                annotate_filter(v_ANS, annot); \
             }
-            v_ANS.info["Samla"].push_back("FAIL_QualityRef");
-            v_ANS.quality = v_Gen.quality + v_Wga.quality;
-            v_ANS.info["Samla"].push_back("Qual_G+W");
-            v_ANS.info["Samla"].push_back("RejectSnp_A");
-        } else if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
-            // We accept the v_All variant
+
+        // There is a variant here, do we have one available in A?
+
+        if (v_All.info["VariantType"][0] == "SNP") {
+
+            // use the variant in A
             v_ANS = v_All;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA4_A_CALLED_Pass");
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("PASS_ContextQual");
+            v_ANS.quality = q_site;
+            annotate_4_passedQuality("GWA4_A");
             v_ANS.info["Samla"].push_back("AcceptSnp_A");
-        } else if (passedContextualQuality) {  // contextual is inconsistent
-            // We can't accept the v_All Variant, build on the entry with higher quality
-            if (v_Gen.quality >= v_Wga.quality) {
+
+        } else if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+
+            // if G or W contain a variant, use the one of higher quality
+            // if neither contains a variant, we have to fail the site
+
+            if ((v_Gen.filter != "." || v_Gen.alleles[1] != ".") && (v_Wga.filter != "." || v_Wga.alleles[1] != ".")) {
+
+                // both are available, pick one of higher quality and make its quality the contextual quality
+                if (v_Gen.quality >= v_Wga.quality) {
+                    v_ANS = v_Gen;
+                    set_filter(v_ANS, "PASS");
+                    v_ANS.quality = q_site;
+                    annotate_4_passedQuality("GWA4_G");
+                } else {
+                    v_ANS = v_Wga;
+                    set_filter(v_ANS, "PASS");
+                    v_ANS.quality = q_site;
+                    annotate_4_passedQuality("GWA4_W");
+                }
+                v_ANS.info["Samla"].push_back("Snp_G+W");
+
+            } else if (v_Gen.filter != "." || v_Gen.alleles[1] != ".") {
+
+                // v_Gen has a variant
                 v_ANS = v_Gen;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA4_G_CALLED_FailInconsistent");
-            } else {
+                set_filter(v_ANS, "PASS");
+                v_ANS.quality = q_site;
+                annotate_4_passedQuality("GWA4_G_noW");
+                v_ANS.info["Samla"].push_back("Snp_G");
+
+            } else if (v_Wga.filter != "." || v_Wga.alleles[1] != ".") {
+
+                // v_Wga has a variant
                 v_ANS = v_Wga;
+                set_filter(v_ANS, "PASS");
+                v_ANS.quality = q_site;
+                annotate_4_passedQuality("GWA4_W_noG");
+                v_ANS.info["Samla"].push_back("Snp_W");
+
+            } else if (v_Gen.filter == "." && v_Gen.alleles[1] == "." && v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
+
+                // no variant is available, fail the site
                 set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA4_W_CALLED_FailInconsistent");
+                v_ANS.quality = q_site;
+                annotate_4_passedQuality("GWA4_noA_noG_noW");
+                v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
+                v_ANS.info["Samla"].push_back("NoSnp_A+G+W");
+
+            } else {
+
+                cerr << "**4* unhandled case within passedQuality" << endl; 
+                exit(1);
+
             }
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
-            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+
+            v_ANS.info["Samla"].push_back("NoSnp_A");
+
         } else {
-            // We can't accept the v_All Variant, build on the entry with higher quality
-            if (v_Gen.quality >= v_Wga.quality) {
-                v_ANS = v_Gen;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA4_G_CALLED_FailLowQual");
-            } else {
-                v_ANS = v_Wga;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA4_W_CALLED_FailLowQual");
-            }
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("Fail_ContextQual");
-            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+
+            cerr << "**4* unhandled v_All VariantType case: " << v_All.info["VariantType"][0] << endl; 
+            exit(1);
+
         }
+
+    } else if (! passedQuality && passedQualityRef) {
+
+#define annotate_4_passedQualityRef(__S__) \
+            { \
+                string annot(__S__); \
+                annot += "_QR"; \
+                if (opt_gwa_disable_context_quality) { \
+                    v_ANS.info["Samla"].push_back("Qual_G+W"); \
+                    v_ANS.info["Samla"].push_back("FAIL_Qual"); \
+                } else { \
+                    v_ANS.info["Samla"].push_back("Qual_GContext+WContext"); \
+                    v_ANS.info["Samla"].push_back("FAIL_ContextQual"); \
+                } \
+                v_ANS.info["Samla"].push_back("PASS_QualityRef"); \
+                annotate_filter(v_ANS, annot); \
+            }
+
+        // We do not think we should have a variant here, we think we should match the reference, can we do that?
+
+        if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+
+            // use the no-variant in A, with quality is sum of context quality
+            v_ANS = v_All;
+            set_filter(v_ANS, "PASS");
+            v_ANS.quality = q_site;
+            annotate_4_passedQualityRef("GWA4_A");
+            v_ANS.info["Samla"].push_back("NoSnp_A");
+
+        } else if (v_All.info["VariantType"][0] == "SNP") {
+
+            // if G or W do not contain a variant, use the one of higher quality
+            // if both contains a variant, we have to fail the site
+
+            if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".") && (v_Wga.filter == "." && v_Wga.alleles[1] == ".")) {
+                // both non-variants are available, pick one of higher quality and make its quality the contextual quality
+                if (v_Gen.quality >= v_Wga.quality) {
+                    v_ANS = v_Gen;
+                    set_filter(v_ANS, "PASS");
+                    v_ANS.quality = q_site;
+                    annotate_4_passedQualityRef("GWA4_G");
+                } else {
+                    v_ANS = v_Wga;
+                    set_filter(v_ANS, "PASS");
+                    v_ANS.quality = q_site;
+                    annotate_4_passedQualityRef("GWA4_W");
+                }
+                v_ANS.info["Samla"].push_back("NoSnp_G+W");
+
+            } else if (v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
+
+                // v_Gen is non-variant, assuming that v_Wga is a (mistaken) variant
+                v_ANS = v_Gen;
+                set_filter(v_ANS, "PASS");
+                v_ANS.quality = q_site;
+                annotate_4_passedQualityRef("GWA4_G_snpW");
+                v_ANS.info["Samla"].push_back("NoSnp_G");
+
+            } else if (v_Wga.filter == "." && v_Wga.alleles[1] == ".") {
+
+                // v_Wga is non-variant, assuming that v_Gen is a (mistaken) variant
+                v_ANS = v_Wga;
+                set_filter(v_ANS, "PASS");
+                v_ANS.quality = q_site;
+                annotate_4_passedQualityRef("GWA4_W_snpG");
+                v_ANS.info["Samla"].push_back("NoSnp_W");
+
+            } else if ((v_Gen.filter != "." || v_Gen.alleles[1] != ".") && (v_Gen.filter != "." || v_Gen.alleles[1] != ".")) {
+
+                // only variants available, fail the site
+                v_ANS = v_All;
+                set_filter(v_ANS, "FAIL");
+                v_ANS.quality = q_site;
+                annotate_4_passedQualityRef("GWA4_A_snpA_snpG_snpW");
+                v_ANS.info["Samla"].push_back("Snp_A+G+W");
+
+            } else {
+
+                cerr << "**4* unhandled case within passedQualityRef" << endl; 
+                exit(1);
+
+            }
+
+            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+
+        } else {
+
+            cerr << "**4* unhandled v_All VariantType case: " << v_All.info["VariantType"][0] << endl; 
+            exit(1);
+
+        }
+
+    } else {
+
+        // We can't decide what to do, fail the site
+        // Annotate re: variants but don't try to pick the right one, we don't know which that could be
+        v_ANS = v_All;
+        set_filter(v_ANS, "FAIL");
+        string annot("GWA4_A");
+        annot += (v_All.filter == "." && v_All.alleles[1] == ".") ? "_noA" : "_snpA";
+        annot += (v_Gen.filter == "." && v_Gen.alleles[1] == ".") ? "_noG" : "_snpG";
+        annot += (v_Wga.filter == "." && v_Wga.alleles[1] == ".") ? "_noW" : "_snpW";
+        v_ANS.quality = q_site;
+        if (opt_gwa_disable_context_quality) {
+            annot += "_noQ";
+            v_ANS.info["Samla"].push_back("Qual_G+W");
+            v_ANS.info["Samla"].push_back("FAIL_Qual");
+        } else {
+            annot += "_noCQ";
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("FAIL_ContextQual");
+        }
+        annot += "_noQR";
+        annotate_filter(v_ANS, annot);
+        v_ANS.info["Samla"].push_back("FAIL_QualityRef");
+
     }
-    v_ANS.info["SamlaContextQual"].push_back(generate_gwa_qual_string(v_Gen, v_Wga, v_All));
+
     return(v_ANS);
 }
 
@@ -1710,6 +1881,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
 Variant
 method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
+
     if (DEBUG(2)) cout << "*** case 5 method_gwa_case5()" << endl;
     Variant v_ANS;
     if (DEBUG(3)) {
@@ -1720,83 +1892,233 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     double qdelta_Gen = (v_Gen.quality - qualwindow_Gen.mean());
     double qdelta_Wga = (v_Wga.quality - qualwindow_Wga.mean());
     double qdelta_All = (v_All.quality - qualwindow_All.mean());
-    double qdelta_Contextual = abs(qdelta_Gen) + abs(qdelta_Wga);
-    bool   passedContextualQuality = (qdelta_Contextual >= opt_gwa_mixed_context_quality);
+    double q_Gen = (v_Gen.filter == "LowQual" && ! opt_gwa_disable_context_quality) ? abs(qdelta_Gen) : v_Gen.quality;
+    double q_Wga = (v_Wga.filter == "LowQual" && ! opt_gwa_disable_context_quality) ? abs(qdelta_Wga) : v_Wga.quality;
+    culpritCase_t vqsr_culprit = (v_Gen.filter == "LowQual") ? culpritCase(v_Gen) : culpritCase(v_Wga);
+    string culprit_string = (v_Gen.filter == "LowQual") ? generate_culprit_string(v_Gen) : generate_culprit_string(v_Wga);
+    double q_site = q_Gen + q_Wga;
+    bool   passedQuality = (q_site >= opt_gwa_mixed_quality);
+    bool   passedQualityRef = (v_Gen.quality + v_Wga.quality >= opt_gwa_mixed_quality_ref);
     if (DEBUG(1)) {
-        fprintf(stderr, "5 G quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen);
-        fprintf(stderr, "5 W quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga);
-        fprintf(stderr, "5 A quality: %9.4f  lookback: %9.4f  quality delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
-        fprintf(stderr, "5                   Contextual abs(G)+abs(W) quality delta: %9.4f ", qdelta_Contextual);
-        cerr << (passedContextualQuality ? "PASSED" : "FAILED") << " gwa-mixed-context-quality=" << opt_gwa_mixed_context_quality << endl;
+        fprintf(stderr, "5 G quality: %9.4f  lookback: %9.4f  delta: %9.4f  q_Gen: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen, q_Gen);
+        fprintf(stderr, "5 W quality: %9.4f  lookback: %9.4f  delta: %9.4f  q_Wga: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga, q_Wga);
+        fprintf(stderr, "5 A quality: %9.4f  lookback: %9.4f  delta: %9.4f\n", v_All.quality, qualwindow_All.mean(), qdelta_All);
+        fprintf(stderr, "5                   q_site G + W delta: %9.4f ", q_site);
+        cerr << "passedQuality " << (passedQuality ? "PASSED" : "FAILED") << " gwa-mixed-quality=" << opt_gwa_mixed_quality << endl;
+        cerr << "passedQualityRef " << (passedQualityRef ? "PASSED" : "FAILED") << " gwa-mixed-quality-ref=" << opt_gwa_mixed_quality_ref << endl;
+        cerr << "vqsr_culprit = " << vqsr_culprit << "  culprit_string = " << culprit_string << endl;
     }
-    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
-        // v_All does not have a variant, is this good or bad?
-        v_ANS = v_All;
-        v_ANS.quality = qdelta_Contextual;
-        v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-        v_ANS.info["Samla"].push_back("NoSnp_A");
-        if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
-            // We think there should be a variant here, because of the drop in
-            // contextual quality for both Gen and Wga that passes the quality
-            // filter, but we cannot see it because GATK doesn't emit complete
-            // information.
-            set_filter(v_ANS, "FAIL");
-            annotate_filter(v_ANS, "GWA5_A_UNCALLED_Fail");
-            v_ANS.info["Samla"].push_back("PASS_ContextQual");
-            v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
-        } else if (passedContextualQuality) {  // contextual is inconsistent
-            set_filter(v_ANS, "FAIL");
-            annotate_filter(v_ANS, "GWA5_A_UNCALLED_FailInconsistent");
-            v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
-        } else {  // mixed bag, either contextual is too low or inconsistent
-            set_filter(v_ANS, "FAIL");
-            annotate_filter(v_ANS, "GWA5_A_UNCALLED_FailLowQual");
-            v_ANS.info["Samla"].push_back("Fail_ContextQual");
-        }
-    } else {  
-        // v_All has a variant, but we don't yet know if we accept it
-        if (passedContextualQuality && qdelta_Gen < 0 && qdelta_Wga < 0) {
-            // We accept the v_All variant
+
+    if (vqsr_culprit != culprit_fail && passedQuality) {
+
+        // There is a variant here, do we have one available in A?
+
+#define annotate_5_passedQuality(__S__) \
+            { \
+                string annot(__S__); \
+                if (opt_gwa_disable_context_quality) { \
+                    annot += "_Q"; \
+                    v_ANS.info["Samla"].push_back("Qual_G+W"); \
+                    v_ANS.info["Samla"].push_back("PASS_Qual"); \
+                } else { \
+                    annot += "_CQ"; \
+                    v_ANS.info["Samla"].push_back("Qual_GContext+WContext"); \
+                    v_ANS.info["Samla"].push_back("PASS_ContextQual"); \
+                } \
+                annotate_filter(v_ANS, annot); \
+                annotate_filter(v_ANS, culprit_string); \
+                v_ANS.info["Samla"].push_back("culpritPass"); \
+            }
+
+        // There is a variant here, do we have one available in A?
+
+        if (v_All.info["VariantType"][0] == "SNP") {
+
+            // use the variant in A
             v_ANS = v_All;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA5_A_CALLED_Pass");
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("PASS_ContextQual");
+            v_ANS.quality = q_site;
+            annotate_5_passedQuality("GWA5_A");
             v_ANS.info["Samla"].push_back("AcceptSnp_A");
-        } else if (passedContextualQuality) {  // contextual is inconsistent
-            // We can't accept the v_All Variant, build on the entry with higher quality
-            if (v_Gen.quality >= v_Wga.quality) {
+
+        } else if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+
+            // if G or W contain a variant, use the one of higher quality
+            // if neither contains a variant, we have to fail the site
+
+            if ((v_Gen.filter != "." || v_Gen.alleles[1] != ".") && (v_Wga.filter != "." || v_Wga.alleles[1] != ".")) {
+
+                // both are available, pick one of higher quality and make its quality the contextual quality
+                if (v_Gen.quality >= v_Wga.quality) {
+                    v_ANS = v_Gen;
+                    set_filter(v_ANS, "PASS");
+                    v_ANS.quality = q_site;
+                    annotate_5_passedQuality("GWA5_G");
+                } else {
+                    v_ANS = v_Wga;
+                    set_filter(v_ANS, "PASS");
+                    v_ANS.quality = q_site;
+                    annotate_5_passedQuality("GWA5_W");
+                }
+                v_ANS.info["Samla"].push_back("Snp_G+W");
+
+            } else if (v_Gen.filter != "." || v_Gen.alleles[1] != ".") {
+
+                // v_Gen has a variant
                 v_ANS = v_Gen;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA5_G_CALLED_FailInconsistent");
-            } else {
+                set_filter(v_ANS, "PASS");
+                v_ANS.quality = q_site;
+                annotate_5_passedQuality("GWA5_G_noW");
+                v_ANS.info["Samla"].push_back("Snp_G");
+
+            } else if (v_Wga.filter != "." || v_Wga.alleles[1] != ".") {
+
+                // v_Wga has a variant
                 v_ANS = v_Wga;
+                set_filter(v_ANS, "PASS");
+                v_ANS.quality = q_site;
+                annotate_5_passedQuality("GWA5_W_noG");
+                v_ANS.info["Samla"].push_back("Snp_W");
+
+            } else if (v_Gen.filter == "." && v_Gen.alleles[1] == "." && v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
+
+                // no variant is available, fail the site
                 set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA5_W_CALLED_FailInconsistent");
+                v_ANS.quality = q_site;
+                annotate_5_passedQuality("GWA5_noA_noG_noW");
+                v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
+                v_ANS.info["Samla"].push_back("NoSnp_A+G+W");
+
+            } else {
+                cerr << "**5* unhandled case within vqsr_culprit and passedQuality" << endl; 
+                exit(1);
             }
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("Fail_ContextInconsistent");
-            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+
+            v_ANS.info["Samla"].push_back("NoSnp_A");
+
         } else {
-            // We can't accept the v_All Variant, build on the entry with higher quality
-            if (v_Gen.quality >= v_Wga.quality) {
-                v_ANS = v_Gen;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA5_G_CALLED_FailLowQual");
-            } else {
-                v_ANS = v_Wga;
-                set_filter(v_ANS, "FAIL");
-                annotate_filter(v_ANS, "GWA5_W_CALLED_FailLowQual");
-            }
-            v_ANS.quality = qdelta_Contextual;
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("Fail_ContextQual");
-            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+            cerr << "**5* unhandled v_All VariantType case: " << v_All.info["VariantType"][0] << endl; 
+            exit(1);
         }
+
+    } else if (passedQualityRef) {  // we failed passedQuality or the culprit test, but we can match the ref
+
+#define annotate_5_passedQualityRef(__S__) \
+            { \
+                string annot(__S__); \
+                annot += "_QR"; \
+                if (opt_gwa_disable_context_quality) { \
+                    v_ANS.info["Samla"].push_back("Qual_G+W"); \
+                    v_ANS.info["Samla"].push_back("FAIL_Qual"); \
+                } else { \
+                    v_ANS.info["Samla"].push_back("Qual_GContext+WContext"); \
+                    v_ANS.info["Samla"].push_back("FAIL_ContextQual"); \
+                } \
+                v_ANS.info["Samla"].push_back("PASS_QualityRef"); \
+                annotate_filter(v_ANS, annot); \
+                annotate_filter(v_ANS, culprit_string); \
+                if (vqsr_culprit == culprit_fail) \
+                    v_ANS.info["Samla"].push_back("culpritFail"); \
+            }
+
+        // We do not think we should have a variant here, we think we should match the reference, can we do that?
+
+        if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+
+            // use the no-variant in A, with quality is sum of context quality
+            v_ANS = v_All;
+            set_filter(v_ANS, "PASS");
+            v_ANS.quality = q_site;
+            annotate_5_passedQualityRef("GWA5_A");
+            v_ANS.info["Samla"].push_back("NoSnp_A");
+
+        } else if (v_All.info["VariantType"][0] == "SNP") {
+
+            // if G or W do not contain a variant, use the one of higher quality
+            // if both contains a variant, we have to fail the site
+
+            if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".") && (v_Wga.filter == "." && v_Wga.alleles[1] == ".")) {
+                // both non-variants are available, pick one of higher quality and make its quality the contextual quality
+                if (v_Gen.quality >= v_Wga.quality) {
+                    v_ANS = v_Gen;
+                    set_filter(v_ANS, "PASS");
+                    v_ANS.quality = q_site;
+                    annotate_5_passedQualityRef("GWA5_G");
+                } else {
+                    v_ANS = v_Wga;
+                    set_filter(v_ANS, "PASS");
+                    v_ANS.quality = q_site;
+                    annotate_5_passedQualityRef("GWA5_W");
+                }
+                v_ANS.info["Samla"].push_back("NoSnp_G+W");
+
+            } else if (v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
+
+                // v_Gen is non-variant, assuming that v_Wga is a (mistaken) variant
+                v_ANS = v_Gen;
+                set_filter(v_ANS, "PASS");
+                v_ANS.quality = q_site;
+                annotate_5_passedQualityRef("GWA5_G_snpW");
+                v_ANS.info["Samla"].push_back("NoSnp_G");
+
+            } else if (v_Wga.filter == "." && v_Wga.alleles[1] == ".") {
+
+                // v_Wga is non-variant, assuming that v_Gen is a (mistaken) variant
+                v_ANS = v_Wga;
+                set_filter(v_ANS, "PASS");
+                v_ANS.quality = q_site;
+                annotate_5_passedQualityRef("GWA5_W_snpG");
+                v_ANS.info["Samla"].push_back("NoSnp_W");
+
+            } else if ((v_Gen.filter != "." || v_Gen.alleles[1] != ".") && (v_Gen.filter != "." || v_Gen.alleles[1] != ".")) {
+
+                // only variants available, fail the site
+                v_ANS = v_All;
+                set_filter(v_ANS, "FAIL");
+                v_ANS.quality = q_site;
+                annotate_5_passedQualityRef("GWA5_A_snpA_snpG_snpW");
+                v_ANS.info["Samla"].push_back("Snp_A+G+W");
+
+            } else {
+                cerr << "**5* unhandled case within passedQualityRef" << endl; 
+                exit(1);
+            }
+
+            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+
+        } else {
+            cerr << "**5* unhandled v_All VariantType case: " << v_All.info["VariantType"][0] << endl; 
+            exit(1);
+        }
+
+    } else {
+
+        // We can't decide what to do, fail the site
+        // Annotate re: variants but don't try to pick the right one, we don't know which that could be
+        v_ANS = v_All;
+        set_filter(v_ANS, "FAIL");
+        string annot("GWA5_A");
+        annot += (v_All.filter == "." && v_All.alleles[1] == ".") ? "_noA" : "_snpA";
+        annot += (v_Gen.filter == "." && v_Gen.alleles[1] == ".") ? "_noG" : "_snpG";
+        annot += (v_Wga.filter == "." && v_Wga.alleles[1] == ".") ? "_noW" : "_snpW";
+        v_ANS.quality = q_site;
+        if (opt_gwa_disable_context_quality) {
+            annot += "_noQ";
+            v_ANS.info["Samla"].push_back("Qual_G+W");
+            v_ANS.info["Samla"].push_back("FAIL_Qual");
+        } else {
+            annot += "_noCQ";
+            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["Samla"].push_back("FAIL_ContextQual");
+        }
+        annot += "_noQR";
+        annotate_filter(v_ANS, annot);
+        annotate_filter(v_ANS, culprit_string);
+        v_ANS.info["Samla"].push_back(vqsr_culprit == culprit_fail ? "culpritFail" : "culpritPass");
+        v_ANS.info["Samla"].push_back("FAIL_QualityRef");
+
     }
-    v_ANS.info["SamlaContextQual"].push_back(generate_gwa_qual_string(v_Gen, v_Wga, v_All));
+
     return(v_ANS);
 }
 
