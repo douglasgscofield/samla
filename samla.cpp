@@ -923,6 +923,7 @@ Variant method_gwa_case9   (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
 string
 generate_gwa_qual_string(const Variant& v_Gen, const Variant& v_Wga, const Variant& v_All) {
     stringstream ss;
+    ss << "quality:";
     ss << "G:" << v_Gen.quality << "/" << showpos << (v_Gen.quality - qualwindow_Gen.mean()) << noshowpos << ":";
     ss << "W:" << v_Wga.quality << "/" << showpos << (v_Wga.quality - qualwindow_Wga.mean()) << noshowpos << ":";
     ss << "A:" << v_All.quality << "/" << showpos << (v_All.quality - qualwindow_All.mean()) << noshowpos;
@@ -972,8 +973,8 @@ culpritCase(Variant& v_A) {
 string
 generate_culprit_string(Variant& v_A, Variant& v_B, const string v_A_string, const string v_B_string) {
     stringstream ss;
-    ss << "culprit-";
-    ss << v_A_string << ":" << ((v_A.info.count("culprit")) ? v_A.info["culprit"][0] : "none") << "-";
+    ss << "culprit:";
+    ss << v_A_string << ":" << ((v_A.info.count("culprit")) ? v_A.info["culprit"][0] : "none") << ":";
     ss << v_B_string << ":" << ((v_B.info.count("culprit")) ? v_B.info["culprit"][0] : "none");
     return(ss.str());
 }
@@ -981,7 +982,7 @@ generate_culprit_string(Variant& v_A, Variant& v_B, const string v_A_string, con
 string
 generate_culprit_string(Variant& v_A, const string v_A_string) {
     stringstream ss;
-    ss << "culprit-" << v_A_string << ":" << ((v_A.info.count("culprit")) ? v_A.info["culprit"][0] : "none");
+    ss << "culprit:" << v_A_string << ":" << ((v_A.info.count("culprit")) ? v_A.info["culprit"][0] : "none");
     return(ss.str());
 }
 
@@ -1157,8 +1158,13 @@ bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
     }
 
     string q = generate_gwa_qual_string(v_Gen, v_Wga, v_All);
-    annotate_filter(v_ANS, q);
+    // annotate_filter(v_ANS, q);
+    if (opt_filter_annotate == true)
+        v_ANS.addFilter(q);
     v_ANS.info["SamlaCase"].push_back(q);
+
+    // clear INFO fields we shouldn't have
+    // v_ANS.info.erase("culprit");
 
     cout << v_ANS << endl;
 
