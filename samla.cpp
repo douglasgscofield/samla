@@ -17,11 +17,36 @@
 //
 
 // TODO Must study consistency of context quality
+// TODO Standardise filter and INFO fields
+// filters must be separated by semicolons, and values do not contain semicolons, 
+// commas, whitespace, '=', with comma separating multiple values for a key
+// INFO fields must be key=val[,val]
+// key is "Samla<key>"
+// things through set_filter() and annotate_filter() are on filter;filter;filter
+// so set_filter() and annotate_filter() add to .filter and to .info["SamlaFilter"]
+// and anotate_case() calls annotate_filter(), but adds the case to the first element of "SamlaCase"
+// things set through v_ANS.info["..."].push_back("...") as INFO: SamlaFilter=filter,filter,filter
+// case results are INFO: SamlaCase=val,val,val
+//
+// VCF annotations added by Samla:
+// filter field: PASS or FAIL
+// SamlaFilter=
+//     culprit-A:string,B:string
+// --no-annotate-filter removes these
+//
+// SamlaCase=
+//
+// VCF annotations removed by Samla:
+// culprit=
+// what else?
+// do we ever need to change VariantType?
 
 #define NAME "samla"
 #include "version.h"
 
 // CHANGELOG
+//
+// 0.0.4 : Cleaning up of produced VCF
 //
 // 0.0.3 : Reimplementation of cases 3 4 5
 //
@@ -898,8 +923,8 @@ Variant method_gwa_case9   (Variant& v_Gen, Variant& v_Wga, Variant& v_All);
 string
 generate_gwa_qual_string(const Variant& v_Gen, const Variant& v_Wga, const Variant& v_All) {
     stringstream ss;
-    ss << "G:" << v_Gen.quality << "/" << showpos << (v_Gen.quality - qualwindow_Gen.mean()) << noshowpos << ";";
-    ss << "W:" << v_Wga.quality << "/" << showpos << (v_Wga.quality - qualwindow_Wga.mean()) << noshowpos << ";";
+    ss << "G:" << v_Gen.quality << "/" << showpos << (v_Gen.quality - qualwindow_Gen.mean()) << noshowpos << ":";
+    ss << "W:" << v_Wga.quality << "/" << showpos << (v_Wga.quality - qualwindow_Wga.mean()) << noshowpos << ":";
     ss << "A:" << v_All.quality << "/" << showpos << (v_All.quality - qualwindow_All.mean()) << noshowpos;
     return(ss.str());
 }
@@ -945,18 +970,18 @@ culpritCase(Variant& v_A) {
 }
 
 string
-generate_culprit_string(Variant& v_Gen, Variant& v_Wga) {
+generate_culprit_string(Variant& v_A, Variant& v_B, const string v_A_string, const string v_B_string) {
     stringstream ss;
-    ss << "culprits-";
-    ss << "G:" << ((v_Gen.info.count("culprit")) ? v_Gen.info["culprit"][0] : "none") << ";";
-    ss << "W:" << ((v_Wga.info.count("culprit")) ? v_Wga.info["culprit"][0] : "none");
+    ss << "culprit-";
+    ss << v_A_string << ":" << ((v_A.info.count("culprit")) ? v_A.info["culprit"][0] : "none") << "-";
+    ss << v_B_string << ":" << ((v_B.info.count("culprit")) ? v_B.info["culprit"][0] : "none");
     return(ss.str());
 }
 
 string
-generate_culprit_string(Variant& v_A) {
+generate_culprit_string(Variant& v_A, const string v_A_string) {
     stringstream ss;
-    ss << "culprit-A:" << ((v_A.info.count("culprit")) ? v_A.info["culprit"][0] : "none");
+    ss << "culprit-" << v_A_string << ":" << ((v_A.info.count("culprit")) ? v_A.info["culprit"][0] : "none");
     return(ss.str());
 }
 
@@ -964,15 +989,22 @@ generate_culprit_string(Variant& v_A) {
 void
 set_filter(Variant& v, const string& filter) {
     v.filter = filter;
-    v.info["Samla"].push_back(filter);
+    v.info["SamlaFilter"].push_back(filter);
 }
 
 void
 annotate_filter(Variant& v, const string& filter) {
     if (opt_filter_annotate == true) {
-        v.addFilter(string("Samla") + filter);
+        //v.addFilter(string("Samla") + filter);
+        v.addFilter(filter);
     }
-    v.info["Samla"].push_back(filter);
+    v.info["SamlaFilter"].push_back(filter);
+}
+
+void
+annotate_case(Variant& v, const string& filter) {
+    annotate_filter(v, filter);
+    v.info["SamlaCase"].insert(v.info["SamlaCase"].begin(), filter);
 }
 
 // Implement gwa method, see comments below for details
@@ -1124,7 +1156,9 @@ bool method_gwa(VcfStripmine::VariantConstPtr_vector& vars) {
         exit(1);
     }
 
-    annotate_filter(v_ANS, generate_gwa_qual_string(v_Gen, v_Wga, v_All));
+    string q = generate_gwa_qual_string(v_Gen, v_Wga, v_All);
+    annotate_filter(v_ANS, q);
+    v_ANS.info["SamlaCase"].push_back(q);
 
     cout << v_ANS << endl;
 
@@ -1456,23 +1490,23 @@ method_gwa_case1(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (v_All.info["VariantType"][0] != "NO_VARIATION") {
         v_ANS = v_All;
         set_filter(v_ANS, "PASS");
-        annotate_filter(v_ANS, "GWA1_A");
+        annotate_case(v_ANS, "GWA1_A");
         v_ANS.quality = v_Gen.quality + v_Wga.quality;
-        v_ANS.info["Samla"].push_back("Qual_G+W");
-        v_ANS.info["Samla"].push_back("Snp_A");
+        v_ANS.info["SamlaCase"].push_back("Qual_G+W");
+        v_ANS.info["SamlaCase"].push_back("Snp_A");
     } else {
         if (v_Gen.quality >= v_Wga.quality) { // favour v_Gen
             v_ANS = v_Gen;  // using quality from v_Gen
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA1_G");
-            v_ANS.info["Samla"].push_back("Qual_G");
-            v_ANS.info["Samla"].push_back("Snp_G");
+            annotate_case(v_ANS, "GWA1_G");
+            v_ANS.info["SamlaCase"].push_back("Qual_G");
+            v_ANS.info["SamlaCase"].push_back("Snp_G");
         } else {  // v_Gen.quality < v_Wga.quality, so favour v_Wga
             v_ANS = v_Wga;  // using quality from v_Wga
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA1_W");
-            v_ANS.info["Samla"].push_back("Qual_W");
-            v_ANS.info["Samla"].push_back("Snp_W");
+            annotate_case(v_ANS, "GWA1_W");
+            v_ANS.info["SamlaCase"].push_back("Qual_W");
+            v_ANS.info["SamlaCase"].push_back("Snp_W");
         }
         if (DEBUG(2)) {
             cerr << "**1* strange case 1, v_Gen and v_Wga are PASS but v_All is not" << endl;
@@ -1497,8 +1531,8 @@ method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = v_Gen;
         set_filter(v_ANS, "PASS");
-        annotate_filter(v_ANS, "GWA2_G_G");
-        v_ANS.info["Samla"].push_back("Snp_G");
+        annotate_case(v_ANS, "GWA2_G_G");
+        v_ANS.info["SamlaCase"].push_back("Snp_G");
         if (DEBUG(2)) {
             cerr << "**2_G* v_Gen is PASS with other filtered but v_All is not a variant" << endl;
             cerr << "**2_G* G " << v_Gen << endl << "**2_G* W " << v_Wga << endl << "**2_G* A " << v_All << endl;
@@ -1506,16 +1540,16 @@ method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     } else {
         v_ANS = v_All;
         set_filter(v_ANS, "PASS");
-        annotate_filter(v_ANS, "GWA2_G_A");
-        v_ANS.info["Samla"].push_back("Snp_A");
+        annotate_case(v_ANS, "GWA2_G_A");
+        v_ANS.info["SamlaCase"].push_back("Snp_A");
     }
     v_ANS.quality = v_Gen.quality;
     if (v_Wga.filter.substr(0, 4) == "VQSR") {
         v_ANS.quality += v_Wga.quality;
-        v_ANS.info["Samla"].push_back("Qual_G+W");
+        v_ANS.info["SamlaCase"].push_back("Qual_G+W");
     } else if (v_Wga.filter == "LowQual") {
         v_ANS.quality += abs(v_Wga.quality - qualwindow_Wga.mean());
-        v_ANS.info["Samla"].push_back("Qual_G+WContext");
+        v_ANS.info["SamlaCase"].push_back("Qual_G+WContext");
     } else {
         cerr << "**2_G* unhandled v_Wga.filter case" << endl; exit(1);
     }
@@ -1537,8 +1571,8 @@ method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = v_Wga;
         set_filter(v_ANS, "PASS");
-        annotate_filter(v_ANS, "GWA2_W_W");
-        v_ANS.info["Samla"].push_back("Snp_W");
+        annotate_case(v_ANS, "GWA2_W_W");
+        v_ANS.info["SamlaCase"].push_back("Snp_W");
         if (DEBUG(2)) {
             cerr << "**2_W** v_Wga is PASS with other filtered but v_All is not a variant" << endl;
             cerr << "**2_W** G " << v_Gen << endl << "**2_W** W " << v_Wga << endl << "**2_W** A " << v_All << endl;
@@ -1546,16 +1580,16 @@ method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     } else {
         v_ANS = v_All;
         set_filter(v_ANS, "PASS");
-        annotate_filter(v_ANS, "GWA2_W_A");
-        v_ANS.info["Samla"].push_back("Snp_A");
+        annotate_case(v_ANS, "GWA2_W_A");
+        v_ANS.info["SamlaCase"].push_back("Snp_A");
     }
     v_ANS.quality = v_Wga.quality;
     if (v_Gen.filter.substr(0, 4) == "VQSR") {
         v_ANS.quality += v_Gen.quality;
-        v_ANS.info["Samla"].push_back("Qual_W+G");
+        v_ANS.info["SamlaCase"].push_back("Qual_W+G");
     } else if (v_Gen.filter == "LowQual") {
         v_ANS.quality += abs(v_Gen.quality - qualwindow_Gen.mean());
-        v_ANS.info["Samla"].push_back("Qual_W+GContext");
+        v_ANS.info["SamlaCase"].push_back("Qual_W+GContext");
     } else {
         cerr << "**2_W* unhandled v_Gen.filter case" << endl; exit(1);
     }
@@ -1583,15 +1617,15 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             if (v_Gen.quality >= v_Wga.quality) {
                 v_ANS = v_Gen;
                 set_filter(v_ANS, "PASS");
-                annotate_filter(v_ANS, "GWA3_G");
-                v_ANS.info["Samla"].push_back("Qual_G");  // quality inherited by copying v_Gen
+                annotate_case(v_ANS, "GWA3_G");
+                v_ANS.info["SamlaCase"].push_back("Qual_G");  // quality inherited by copying v_Gen
             } else {
                 v_ANS = v_Wga;
                 set_filter(v_ANS, "PASS");
-                annotate_filter(v_ANS, "GWA3_W");
-                v_ANS.info["Samla"].push_back("Qual_W");  // quality inherited by copying v_Wga
+                annotate_case(v_ANS, "GWA3_W");
+                v_ANS.info["SamlaCase"].push_back("Qual_W");  // quality inherited by copying v_Wga
             }
-            v_ANS.info["Samla"].push_back("NoSnp_A");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_A");
 
         } else if (v_All.info["VariantType"][0] == "SNP" || v_All.info["VariantType"][0] == "MULTIALLELIC_SNP") {
 
@@ -1599,9 +1633,9 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             v_ANS = v_All;
             v_ANS.quality = v_Gen.quality + v_Wga.quality;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA3_A");
-            v_ANS.info["Samla"].push_back("Qual_G+W");
-            v_ANS.info["Samla"].push_back("AcceptSnp_A");
+            annotate_case(v_ANS, "GWA3_A");
+            v_ANS.info["SamlaCase"].push_back("Qual_G+W");
+            v_ANS.info["SamlaCase"].push_back("AcceptSnp_A");
 
         } else {
 
@@ -1613,6 +1647,7 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         string annot("culpritPass");
         char buf[10]; sprintf(buf, "%d", (int)vqsr_culprits);
         annotate_filter(v_ANS, annot + buf);
+        v_ANS.info["SamlaCase"].push_back(annot + buf);
         // annotate_filter(v_ANS, "culpritPass");
 
     } else { // culprit_fail
@@ -1620,14 +1655,17 @@ method_gwa_case3(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         // Accept whatever A contains, but fail the site.
         v_ANS = v_All;
         set_filter(v_ANS, "FAIL");
-        annotate_filter(v_ANS, "GWA3_A");
-        v_ANS.info["Samla"].push_back("Qual_A");
+        annotate_case(v_ANS, "GWA3_A");
+        v_ANS.info["SamlaCase"].push_back("Qual_A");
         annotate_filter(v_ANS, "culpritFail");
+        v_ANS.info["SamlaCase"].push_back("culpritFail");
 
     }
 
     // annotate with the culprit values
-    annotate_filter(v_ANS, generate_culprit_string(v_Gen, v_Wga));
+    string q = generate_culprit_string(v_Gen, v_Wga, "G", "W");
+    annotate_filter(v_ANS, q);
+    v_ANS.info["SamlaCase"].push_back(q);
 
     return(v_ANS);
 }
@@ -1672,14 +1710,14 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 string annot(__S__); \
                 if (opt_gwa_disable_context_quality) { \
                     annot += "_Q"; \
-                    v_ANS.info["Samla"].push_back("Qual_G+W"); \
-                    v_ANS.info["Samla"].push_back("PASS_Qual"); \
+                    v_ANS.info["SamlaCase"].push_back("Qual_G+W"); \
+                    v_ANS.info["SamlaCase"].push_back("PASS_Qual"); \
                 } else { \
                     annot += "_CQ"; \
-                    v_ANS.info["Samla"].push_back("Qual_GContext+WContext"); \
-                    v_ANS.info["Samla"].push_back("PASS_ContextQual"); \
+                    v_ANS.info["SamlaCase"].push_back("Qual_GContext+WContext"); \
+                    v_ANS.info["SamlaCase"].push_back("PASS_ContextQual"); \
                 } \
-                annotate_filter(v_ANS, annot); \
+                annotate_case(v_ANS, annot); \
             }
 
         // There is a variant here, do we have one available in A?
@@ -1691,7 +1729,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             set_filter(v_ANS, "PASS");
             v_ANS.quality = q_site;
             annotate_4_passedQuality("GWA4_A");
-            v_ANS.info["Samla"].push_back("AcceptSnp_A");
+            v_ANS.info["SamlaCase"].push_back("AcceptSnp_A");
 
         } else if (v_All.info["VariantType"][0] == "NO_VARIATION") {
 
@@ -1712,7 +1750,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                     v_ANS.quality = q_site;
                     annotate_4_passedQuality("GWA4_W");
                 }
-                v_ANS.info["Samla"].push_back("Snp_G+W");
+                v_ANS.info["SamlaCase"].push_back("Snp_G+W");
 
             } else if (v_Gen.filter != "." || v_Gen.alleles[1] != ".") {
 
@@ -1721,7 +1759,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "PASS");
                 v_ANS.quality = q_site;
                 annotate_4_passedQuality("GWA4_G_noW");
-                v_ANS.info["Samla"].push_back("Snp_G");
+                v_ANS.info["SamlaCase"].push_back("Snp_G");
 
             } else if (v_Wga.filter != "." || v_Wga.alleles[1] != ".") {
 
@@ -1730,7 +1768,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "PASS");
                 v_ANS.quality = q_site;
                 annotate_4_passedQuality("GWA4_W_noG");
-                v_ANS.info["Samla"].push_back("Snp_W");
+                v_ANS.info["SamlaCase"].push_back("Snp_W");
 
             } else if (v_Gen.filter == "." && v_Gen.alleles[1] == "." && v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
 
@@ -1738,8 +1776,8 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "FAIL");
                 v_ANS.quality = q_site;
                 annotate_4_passedQuality("GWA4_noA_noG_noW");
-                v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
-                v_ANS.info["Samla"].push_back("NoSnp_A+G+W");
+                v_ANS.info["SamlaCase"].push_back("INFER_UNCALLED_VARIANT");
+                v_ANS.info["SamlaCase"].push_back("NoSnp_A+G+W");
 
             } else {
 
@@ -1748,7 +1786,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
             }
 
-            v_ANS.info["Samla"].push_back("NoSnp_A");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_A");
 
         } else {
 
@@ -1764,14 +1802,14 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 string annot(__S__); \
                 annot += "_QR"; \
                 if (opt_gwa_disable_context_quality) { \
-                    v_ANS.info["Samla"].push_back("Qual_G+W"); \
-                    v_ANS.info["Samla"].push_back("FAIL_Qual"); \
+                    v_ANS.info["SamlaCase"].push_back("Qual_G+W"); \
+                    v_ANS.info["SamlaCase"].push_back("FAIL_Qual"); \
                 } else { \
-                    v_ANS.info["Samla"].push_back("Qual_GContext+WContext"); \
-                    v_ANS.info["Samla"].push_back("FAIL_ContextQual"); \
+                    v_ANS.info["SamlaCase"].push_back("Qual_GContext+WContext"); \
+                    v_ANS.info["SamlaCase"].push_back("FAIL_ContextQual"); \
                 } \
-                v_ANS.info["Samla"].push_back("PASS_QualityRef"); \
-                annotate_filter(v_ANS, annot); \
+                v_ANS.info["SamlaCase"].push_back("PASS_QualityRef"); \
+                annotate_case(v_ANS, annot); \
             }
 
         // We do not think we should have a variant here, we think we should match the reference, can we do that?
@@ -1783,7 +1821,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             set_filter(v_ANS, "PASS");
             v_ANS.quality = q_site;
             annotate_4_passedQualityRef("GWA4_A");
-            v_ANS.info["Samla"].push_back("NoSnp_A");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_A");
 
         } else if (v_All.info["VariantType"][0] == "SNP" || v_All.info["VariantType"][0] == "MULTIALLELIC_SNP") {
 
@@ -1803,7 +1841,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                     v_ANS.quality = q_site;
                     annotate_4_passedQualityRef("GWA4_W");
                 }
-                v_ANS.info["Samla"].push_back("NoSnp_G+W");
+                v_ANS.info["SamlaCase"].push_back("NoSnp_G+W");
 
             } else if (v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
 
@@ -1812,7 +1850,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "PASS");
                 v_ANS.quality = q_site;
                 annotate_4_passedQualityRef("GWA4_G_snpW");
-                v_ANS.info["Samla"].push_back("NoSnp_G");
+                v_ANS.info["SamlaCase"].push_back("NoSnp_G");
 
             } else if (v_Wga.filter == "." && v_Wga.alleles[1] == ".") {
 
@@ -1821,7 +1859,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "PASS");
                 v_ANS.quality = q_site;
                 annotate_4_passedQualityRef("GWA4_W_snpG");
-                v_ANS.info["Samla"].push_back("NoSnp_W");
+                v_ANS.info["SamlaCase"].push_back("NoSnp_W");
 
             } else if ((v_Gen.filter != "." || v_Gen.alleles[1] != ".") && (v_Gen.filter != "." || v_Gen.alleles[1] != ".")) {
 
@@ -1830,7 +1868,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "FAIL");
                 v_ANS.quality = q_site;
                 annotate_4_passedQualityRef("GWA4_A_snpA_snpG_snpW");
-                v_ANS.info["Samla"].push_back("Snp_A+G+W");
+                v_ANS.info["SamlaCase"].push_back("Snp_A+G+W");
 
             } else {
 
@@ -1839,7 +1877,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
             }
 
-            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+            v_ANS.info["SamlaCase"].push_back("IgnoreSnp_A");
 
         } else {
 
@@ -1861,16 +1899,16 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         v_ANS.quality = q_site;
         if (opt_gwa_disable_context_quality) {
             annot += "_noQ";
-            v_ANS.info["Samla"].push_back("Qual_G+W");
-            v_ANS.info["Samla"].push_back("FAIL_Qual");
+            v_ANS.info["SamlaCase"].push_back("Qual_G+W");
+            v_ANS.info["SamlaCase"].push_back("FAIL_Qual");
         } else {
             annot += "_noCQ";
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
+            v_ANS.info["SamlaCase"].push_back("Qual_GContext+WContext");
             v_ANS.info["Samla"].push_back("FAIL_ContextQual");
         }
         annot += "_noQR";
-        annotate_filter(v_ANS, annot);
-        v_ANS.info["Samla"].push_back("FAIL_QualityRef");
+        annotate_case(v_ANS, annot);
+        v_ANS.info["SamlaCase"].push_back("FAIL_QualityRef");
 
     }
 
@@ -1897,7 +1935,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     double q_Gen = (v_Gen.filter == "LowQual" && ! opt_gwa_disable_context_quality) ? abs(qdelta_Gen) : v_Gen.quality;
     double q_Wga = (v_Wga.filter == "LowQual" && ! opt_gwa_disable_context_quality) ? abs(qdelta_Wga) : v_Wga.quality;
     culpritCase_t vqsr_culprit = (v_Gen.filter == "LowQual") ? culpritCase(v_Wga) : culpritCase(v_Gen);
-    string culprit_string = (v_Gen.filter == "LowQual") ? generate_culprit_string(v_Gen) : generate_culprit_string(v_Wga);
+    string culprit_string = (v_Gen.filter == "LowQual") ? generate_culprit_string(v_Gen, "G") : generate_culprit_string(v_Wga, "W");
     double q_site = q_Gen + q_Wga;
     bool   passedQuality = (q_site >= opt_gwa_mixed_quality);
     bool   passedQualityRef = (v_Gen.quality + v_Wga.quality >= opt_gwa_mixed_quality_ref);
@@ -1920,16 +1958,17 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 string annot(__S__); \
                 if (opt_gwa_disable_context_quality) { \
                     annot += "_Q"; \
-                    v_ANS.info["Samla"].push_back("Qual_G+W"); \
-                    v_ANS.info["Samla"].push_back("PASS_Qual"); \
+                    v_ANS.info["SamlaCase"].push_back("Qual_G+W"); \
+                    v_ANS.info["SamlaCase"].push_back("PASS_Qual"); \
                 } else { \
                     annot += "_CQ"; \
-                    v_ANS.info["Samla"].push_back("Qual_GContext+WContext"); \
-                    v_ANS.info["Samla"].push_back("PASS_ContextQual"); \
+                    v_ANS.info["SamlaCase"].push_back("Qual_GContext+WContext"); \
+                    v_ANS.info["SamlaCase"].push_back("PASS_ContextQual"); \
                 } \
-                annotate_filter(v_ANS, annot); \
+                annotate_case(v_ANS, annot); \
+                v_ANS.info["SamlaCase"].push_back("culpritPass"); \
                 annotate_filter(v_ANS, culprit_string); \
-                v_ANS.info["Samla"].push_back("culpritPass"); \
+                v_ANS.info["SamlaCase"].push_back(culprit_string); \
             }
 
         // There is a variant here, do we have one available in A?
@@ -1941,7 +1980,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             set_filter(v_ANS, "PASS");
             v_ANS.quality = q_site;
             annotate_5_passedQuality("GWA5_A");
-            v_ANS.info["Samla"].push_back("AcceptSnp_A");
+            v_ANS.info["SamlaCase"].push_back("AcceptSnp_A");
 
         } else if (v_All.info["VariantType"][0] == "NO_VARIATION") {
 
@@ -1962,7 +2001,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                     v_ANS.quality = q_site;
                     annotate_5_passedQuality("GWA5_W");
                 }
-                v_ANS.info["Samla"].push_back("Snp_G+W");
+                v_ANS.info["SamlaCase"].push_back("Snp_G+W");
 
             } else if (v_Gen.filter != "." || v_Gen.alleles[1] != ".") {
 
@@ -1971,7 +2010,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "PASS");
                 v_ANS.quality = q_site;
                 annotate_5_passedQuality("GWA5_G_noW");
-                v_ANS.info["Samla"].push_back("Snp_G");
+                v_ANS.info["SamlaCase"].push_back("Snp_G");
 
             } else if (v_Wga.filter != "." || v_Wga.alleles[1] != ".") {
 
@@ -1980,7 +2019,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "PASS");
                 v_ANS.quality = q_site;
                 annotate_5_passedQuality("GWA5_W_noG");
-                v_ANS.info["Samla"].push_back("Snp_W");
+                v_ANS.info["SamlaCase"].push_back("Snp_W");
 
             } else if (v_Gen.filter == "." && v_Gen.alleles[1] == "." && v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
 
@@ -1988,15 +2027,15 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "FAIL");
                 v_ANS.quality = q_site;
                 annotate_5_passedQuality("GWA5_noA_noG_noW");
-                v_ANS.info["Samla"].push_back("INFER_UNCALLED_VARIANT");
-                v_ANS.info["Samla"].push_back("NoSnp_A+G+W");
+                v_ANS.info["SamlaCase"].push_back("INFER_UNCALLED_VARIANT");
+                v_ANS.info["SamlaCase"].push_back("NoSnp_A+G+W");
 
             } else {
                 cerr << "**5* unhandled case within vqsr_culprit and passedQuality" << endl; 
                 exit(1);
             }
 
-            v_ANS.info["Samla"].push_back("NoSnp_A");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_A");
 
         } else {
             cerr << "**5* unhandled v_All VariantType case: " << v_All.info["VariantType"][0] << endl; 
@@ -2010,17 +2049,20 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 string annot(__S__); \
                 annot += "_QR"; \
                 if (opt_gwa_disable_context_quality) { \
-                    v_ANS.info["Samla"].push_back("Qual_G+W"); \
-                    v_ANS.info["Samla"].push_back("FAIL_Qual"); \
+                    v_ANS.info["SamlaCase"].push_back("Qual_G+W"); \
+                    v_ANS.info["SamlaCase"].push_back("FAIL_Qual"); \
                 } else { \
-                    v_ANS.info["Samla"].push_back("Qual_GContext+WContext"); \
-                    v_ANS.info["Samla"].push_back("FAIL_ContextQual"); \
+                    v_ANS.info["SamlaCase"].push_back("Qual_GContext+WContext"); \
+                    v_ANS.info["SamlaCase"].push_back("FAIL_ContextQual"); \
                 } \
-                v_ANS.info["Samla"].push_back("PASS_QualityRef"); \
-                annotate_filter(v_ANS, annot); \
+                v_ANS.info["SamlaCase"].push_back("PASS_QualityRef"); \
+                annotate_case(v_ANS, annot); \
+                if (vqsr_culprit == culprit_fail) { \
+                    annotate_filter(v_ANS, "culpritFail"); \
+                    v_ANS.info["SamlaCase"].push_back("culpritFail"); \
+                } \
                 annotate_filter(v_ANS, culprit_string); \
-                if (vqsr_culprit == culprit_fail) \
-                    v_ANS.info["Samla"].push_back("culpritFail"); \
+                v_ANS.info["SamlaCase"].push_back(culprit_string); \
             }
 
         // We do not think we should have a variant here, we think we should match the reference, can we do that?
@@ -2032,7 +2074,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             set_filter(v_ANS, "PASS");
             v_ANS.quality = q_site;
             annotate_5_passedQualityRef("GWA5_A");
-            v_ANS.info["Samla"].push_back("NoSnp_A");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_A");
 
         } else if (v_All.info["VariantType"][0] == "SNP" || v_All.info["VariantType"][0] == "MULTIALLELIC_SNP") {
 
@@ -2052,7 +2094,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                     v_ANS.quality = q_site;
                     annotate_5_passedQualityRef("GWA5_W");
                 }
-                v_ANS.info["Samla"].push_back("NoSnp_G+W");
+                v_ANS.info["SamlaCase"].push_back("NoSnp_G+W");
 
             } else if (v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
 
@@ -2061,7 +2103,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "PASS");
                 v_ANS.quality = q_site;
                 annotate_5_passedQualityRef("GWA5_G_snpW");
-                v_ANS.info["Samla"].push_back("NoSnp_G");
+                v_ANS.info["SamlaCase"].push_back("NoSnp_G");
 
             } else if (v_Wga.filter == "." && v_Wga.alleles[1] == ".") {
 
@@ -2070,7 +2112,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "PASS");
                 v_ANS.quality = q_site;
                 annotate_5_passedQualityRef("GWA5_W_snpG");
-                v_ANS.info["Samla"].push_back("NoSnp_W");
+                v_ANS.info["SamlaCase"].push_back("NoSnp_W");
 
             } else if ((v_Gen.filter != "." || v_Gen.alleles[1] != ".") && (v_Gen.filter != "." || v_Gen.alleles[1] != ".")) {
 
@@ -2079,14 +2121,14 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 set_filter(v_ANS, "FAIL");
                 v_ANS.quality = q_site;
                 annotate_5_passedQualityRef("GWA5_A_snpA_snpG_snpW");
-                v_ANS.info["Samla"].push_back("Snp_A+G+W");
+                v_ANS.info["SamlaCase"].push_back("Snp_A+G+W");
 
             } else {
                 cerr << "**5* unhandled case within passedQualityRef" << endl; 
                 exit(1);
             }
 
-            v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+            v_ANS.info["SamlaCase"].push_back("IgnoreSnp_A");
 
         } else {
             cerr << "**5* unhandled v_All VariantType case: " << v_All.info["VariantType"][0] << endl; 
@@ -2106,18 +2148,25 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         v_ANS.quality = q_site;
         if (opt_gwa_disable_context_quality) {
             annot += "_noQ";
-            v_ANS.info["Samla"].push_back("Qual_G+W");
-            v_ANS.info["Samla"].push_back("FAIL_Qual");
+            v_ANS.info["SamlaCase"].push_back("Qual_G+W");
+            v_ANS.info["SamlaCase"].push_back("FAIL_Qual");
         } else {
             annot += "_noCQ";
-            v_ANS.info["Samla"].push_back("Qual_GContext+WContext");
-            v_ANS.info["Samla"].push_back("FAIL_ContextQual");
+            v_ANS.info["SamlaCase"].push_back("Qual_GContext+WContext");
+            v_ANS.info["SamlaCase"].push_back("FAIL_ContextQual");
         }
         annot += "_noQR";
-        annotate_filter(v_ANS, annot);
+        annotate_case(v_ANS, annot);
+        if (vqsr_culprit == culprit_fail) {
+            annotate_filter(v_ANS, "culpritFail");
+            v_ANS.info["SamlaCase"].push_back("culpritFail");
+        } else {
+            annotate_filter(v_ANS, "culpritPass");
+            v_ANS.info["SamlaCase"].push_back("culpritPass");
+        }
         annotate_filter(v_ANS, culprit_string);
-        v_ANS.info["Samla"].push_back(vqsr_culprit == culprit_fail ? "culpritFail" : "culpritPass");
-        v_ANS.info["Samla"].push_back("FAIL_QualityRef");
+        v_ANS.info["SamlaCase"].push_back(culprit_string);
+        v_ANS.info["SamlaCase"].push_back("FAIL_QualityRef");
 
     }
 
@@ -2135,27 +2184,27 @@ method_gwa_case6_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = v_All;
         set_filter(v_ANS, "PASS");
-        annotate_filter(v_ANS, "GWA6_G_A");
+        annotate_case(v_ANS, "GWA6_G_A");
         v_ANS.quality = v_Gen.quality + v_Wga.quality;
-        v_ANS.info["Samla"].push_back("Qual_G+W");
-        v_ANS.info["Samla"].push_back("NoSnp_A");
+        v_ANS.info["SamlaCase"].push_back("Qual_G+W");
+        v_ANS.info["SamlaCase"].push_back("NoSnp_A");
     } else {
         // Favour the higher-quality no-variant if v_All disagrees
         if (v_Gen.quality >= v_Wga.quality) {
             // we will probably most often be here
             v_ANS = v_Gen;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA6_G_G");
-            v_ANS.info["Samla"].push_back("Qual_G");
-            v_ANS.info["Samla"].push_back("NoSnp_G");
+            annotate_case(v_ANS, "GWA6_G_G");
+            v_ANS.info["SamlaCase"].push_back("Qual_G");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_G");
         } else {
             v_ANS = v_Wga;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA6_G_W");
-            v_ANS.info["Samla"].push_back("Qual_W");
-            v_ANS.info["Samla"].push_back("NoSnp_W");
+            annotate_case(v_ANS, "GWA6_G_W");
+            v_ANS.info["SamlaCase"].push_back("Qual_W");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_W");
         }
-        v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        v_ANS.info["SamlaCase"].push_back("IgnoreSnp_A");
         if (DEBUG(2)) {
             cerr << "**6_G** v_Gen is '.' with v_Wga LowQual but v_All *is* a variant" << endl;
             cerr << "**6_G** G " << v_Gen << endl << "**6_G** W " << v_Wga << endl << "**6_G** A " << v_All << endl;
@@ -2175,27 +2224,27 @@ method_gwa_case6_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = v_All;
         set_filter(v_ANS, "PASS");
-        annotate_filter(v_ANS, "GWA6_W_A");
+        annotate_case(v_ANS, "GWA6_W_A");
         v_ANS.quality = v_Gen.quality + v_Wga.quality;
-        v_ANS.info["Samla"].push_back("Qual_G+W");
-        v_ANS.info["Samla"].push_back("NoSnp_A");
+        v_ANS.info["SamlaCase"].push_back("Qual_G+W");
+        v_ANS.info["SamlaCase"].push_back("NoSnp_A");
     } else {
         // Favour the higher-quality no-variant if v_All disagrees
         if (v_Gen.quality >= v_Wga.quality) {
             v_ANS = v_Gen;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA6_W_G");
-            v_ANS.info["Samla"].push_back("Qual_G");
-            v_ANS.info["Samla"].push_back("NoSnp_G");
+            annotate_case(v_ANS, "GWA6_W_G");
+            v_ANS.info["SamlaCase"].push_back("Qual_G");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_G");
         } else {
             // we will probably most often be here
             v_ANS = v_Wga;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA6_W_W");
-            v_ANS.info["Samla"].push_back("Qual_W");
-            v_ANS.info["Samla"].push_back("NoSnp_W");
+            annotate_case(v_ANS, "GWA6_W_W");
+            v_ANS.info["SamlaCase"].push_back("Qual_W");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_W");
         }
-        v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        v_ANS.info["SamlaCase"].push_back("IgnoreSnp_A");
         if (DEBUG(2)) {
             cerr << "**6_W** v_Gen is LowQual with v_Wga '.' but v_All *is* a variant" << endl;
             cerr << "**6_W** G " << v_Gen << endl << "**6_W** W " << v_Wga << endl << "**6_W** A " << v_All << endl;
@@ -2215,27 +2264,27 @@ method_gwa_case7_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = v_All;
         set_filter(v_ANS, "PASS");
-        annotate_filter(v_ANS, "GWA7_G_A");
+        annotate_case(v_ANS, "GWA7_G_A");
         v_ANS.quality = v_Gen.quality + v_Wga.quality;
-        v_ANS.info["Samla"].push_back("Qual_G+W");
-        v_ANS.info["Samla"].push_back("NoSnp_A");
+        v_ANS.info["SamlaCase"].push_back("Qual_G+W");
+        v_ANS.info["SamlaCase"].push_back("NoSnp_A");
     } else {
         // Favour the higher-quality no-variant if v_All disagrees
         if (v_Gen.quality >= v_Wga.quality) {
             // we will probably most often be here
             v_ANS = v_Gen;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA7_G_G");
-            v_ANS.info["Samla"].push_back("Qual_G");
-            v_ANS.info["Samla"].push_back("NoSnp_G");
+            annotate_case(v_ANS, "GWA7_G_G");
+            v_ANS.info["SamlaCase"].push_back("Qual_G");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_G");
         } else {
             v_ANS = v_Wga;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA7_G_W");
-            v_ANS.info["Samla"].push_back("Qual_W");
-            v_ANS.info["Samla"].push_back("NoSnp_W");
+            annotate_case(v_ANS, "GWA7_G_W");
+            v_ANS.info["SamlaCase"].push_back("Qual_W");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_W");
         }
-        v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        v_ANS.info["SamlaCase"].push_back("IgnoreSnp_A");
         if (DEBUG(2)) {
             cerr << "**7_G** v_Gen is '.' with v_Wga LowQual but v_All *is* a variant" << endl;
             cerr << "**7_G** G " << v_Gen << endl << "**7_G** W " << v_Wga << endl << "**7_G** A " << v_All << endl;
@@ -2255,27 +2304,27 @@ method_gwa_case7_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = v_All;
         set_filter(v_ANS, "PASS");
-        annotate_filter(v_ANS, "GWA7_W_A");
+        annotate_case(v_ANS, "GWA7_W_A");
         v_ANS.quality = v_Gen.quality + v_Wga.quality;
-        v_ANS.info["Samla"].push_back("Qual_G+W");
-        v_ANS.info["Samla"].push_back("NoSnp_A");
+        v_ANS.info["SamlaCase"].push_back("Qual_G+W");
+        v_ANS.info["SamlaCase"].push_back("NoSnp_A");
     } else {
         // Favour the higher-quality no-variant if v_All disagrees
         if (v_Gen.quality >= v_Wga.quality) {
             v_ANS = v_Gen;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA7_W_G");
-            v_ANS.info["Samla"].push_back("Qual_G");
-            v_ANS.info["Samla"].push_back("NoSnp_G");
+            annotate_case(v_ANS, "GWA7_W_G");
+            v_ANS.info["SamlaCase"].push_back("Qual_G");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_G");
         } else {
             // we will probably most often be here
             v_ANS = v_Wga;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA7_W_W");
-            v_ANS.info["Samla"].push_back("Qual_W");
-            v_ANS.info["Samla"].push_back("NoSnp_W");
+            annotate_case(v_ANS, "GWA7_W_W");
+            v_ANS.info["SamlaCase"].push_back("Qual_W");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_W");
         }
-        v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        v_ANS.info["SamlaCase"].push_back("IgnoreSnp_A");
         if (DEBUG(2)) {
             cerr << "**7_W** v_Gen is LowQual with v_Wga '.' but v_All *is* a variant" << endl;
             cerr << "**7_W** G " << v_Gen << endl << "**7_W** W " << v_Wga << endl << "**7_W** A " << v_All << endl;
@@ -2293,9 +2342,9 @@ method_gwa_case8_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 8_G method_gwa_case8_G()" << endl;
     Variant v_ANS(v_Gen);
     set_filter(v_ANS, "PASS");
-    annotate_filter(v_ANS, "GWA8_G");
-    v_ANS.info["Samla"].push_back("Qual_G");
-    v_ANS.info["Samla"].push_back("Snp_G");
+    annotate_case(v_ANS, "GWA8_G");
+    v_ANS.info["SamlaCase"].push_back("Qual_G");
+    v_ANS.info["SamlaCase"].push_back("Snp_G");
     return(v_ANS);
 }
 
@@ -2308,9 +2357,9 @@ method_gwa_case8_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 8_W method_gwa_case8_W()" << endl;
     Variant v_ANS(v_Wga);
     set_filter(v_ANS, "PASS");
-    annotate_filter(v_ANS, "GWA8_W");
-    v_ANS.info["Samla"].push_back("Qual_W");
-    v_ANS.info["Samla"].push_back("Snp_W");
+    annotate_case(v_ANS, "GWA8_W");
+    v_ANS.info["SamlaCase"].push_back("Qual_W");
+    v_ANS.info["SamlaCase"].push_back("Snp_W");
     return(v_ANS);
 }
 
@@ -2327,27 +2376,27 @@ method_gwa_case9(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = v_All;
         set_filter(v_ANS, "PASS");
-        annotate_filter(v_ANS, "GWA9_A");
+        annotate_case(v_ANS, "GWA9_A");
         v_ANS.quality = v_Gen.quality + v_Wga.quality;
-        v_ANS.info["Samla"].push_back("Qual_G+W");
-        v_ANS.info["Samla"].push_back("NoSnp");
+        v_ANS.info["SamlaCase"].push_back("Qual_G+W");
+        v_ANS.info["SamlaCase"].push_back("NoSnp");
     } else {
         // Favour the higher-quality no-variant if v_All disagrees
         // We will probably very rarely end up here
         if (v_Gen.quality >= v_Wga.quality) {
             v_ANS = v_Gen;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA9_G");
-            v_ANS.info["Samla"].push_back("Qual_G");
-            v_ANS.info["Samla"].push_back("NoSnp_G");
+            annotate_case(v_ANS, "GWA9_G");
+            v_ANS.info["SamlaCase"].push_back("Qual_G");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_G");
         } else {
             v_ANS = v_Wga;
             set_filter(v_ANS, "PASS");
-            annotate_filter(v_ANS, "GWA9_W");
-            v_ANS.info["Samla"].push_back("Qual_W");
-            v_ANS.info["Samla"].push_back("NoSnp_W");
+            annotate_case(v_ANS, "GWA9_W");
+            v_ANS.info["SamlaCase"].push_back("Qual_W");
+            v_ANS.info["SamlaCase"].push_back("NoSnp_W");
         }
-        v_ANS.info["Samla"].push_back("IgnoreSnp_A");
+        v_ANS.info["SamlaCase"].push_back("IgnoreSnp_A");
         if (DEBUG(2)) {
             cerr << "**9** v_Gen and v_Wga both no-variant, but v_All *is* a variant" << endl;
             cerr << "**9** G " << v_Gen << endl << "**9** W " << v_Wga << endl << "**9** A " << v_All << endl;
