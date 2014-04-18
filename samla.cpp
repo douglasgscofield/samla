@@ -668,7 +668,7 @@ generate_full_command_line_string() {
     ss << samla_name;
 #endif
     ss << " " << "--references"  << " " << references_file;
-    ss << " " << (opt_filter_annotate ? (opt_full_filter_annotate ? "--full-filter-annotate" : "--filter-annotate") : "--no-filter-annotate");
+    ss << " " << (opt_full_filter_annotate ? "--full-filter-annotate" : (opt_filter_annotate ? "--filter-annotate" : "--no-filter-annotate"));
     ss << " " << "--method"      << " " << samla_method;
     ss << " " << "--vcf-genomic" << " " << vcf_genomic;
     ss << " " << "--vcf-wga"     << " " << vcf_wga;
@@ -709,9 +709,9 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
     CSimpleOpt::SOption samla_options[] = {
         { o_references,  "-r",            SO_REQ_SEP },  // file of reference sequence names
         { o_references,  "--references",  SO_REQ_SEP },
-        { o_filter_annotate,      "--filter-annotate",    SO_NONE },
+        { o_no_filter_annotate,   "--no-filter-annotate",   SO_NONE },
+        { o_filter_annotate,      "--filter-annotate",      SO_NONE },
         { o_full_filter_annotate, "--full-filter-annotate", SO_NONE },
-        { o_no_filter_annotate,   "--no-filter-annotate", SO_NONE },
         { o_method,      "-m",            SO_REQ_SEP },  // method for variant combining
         { o_method,      "--method",      SO_REQ_SEP },
 
@@ -765,14 +765,11 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
             case o_references:   
                 references_file = args.OptionArg(); break;
             case o_filter_annotate:    
-                opt_filter_annotate = true; break;
-                opt_full_filter_annotate = false; break;
+                opt_filter_annotate = true; opt_full_filter_annotate = false; break;
             case o_full_filter_annotate:    
-                opt_filter_annotate = true; break;
-                opt_full_filter_annotate = true; break;
+                opt_filter_annotate = true; opt_full_filter_annotate = true; break;
             case o_no_filter_annotate:    
-                opt_filter_annotate = false; break;
-                opt_full_filter_annotate = false; break;
+                opt_filter_annotate = false; opt_full_filter_annotate = false; break;
             case o_method:   
                 samla_method = args.OptionArg(); break;
             case o_vcf_genomic:   
@@ -1058,6 +1055,18 @@ class HeaderAnnotation {
             tags.push_back(AnnotationTag(ht, t, is_filter, description));
         }
         bool exists(const string& tag_for_search) {
+            // special cases for opt_full_filter_annotate
+            if (opt_full_filter_annotate) {
+                if (tag_for_search == "quality:") 
+                    return false;
+                else if (tag_for_search.substr(0, 8) == "quality:") 
+                    return true;
+                if (tag_for_search == "culprits:") 
+                    return false;
+                else if (tag_for_search.substr(0, 8) == "culprits:") 
+                    return true;
+            }
+            // look amongst registered Headers
             for (vATCI t = tags.begin(); t != tags.end(); ++t) 
                 if (t->tag == tag_for_search) 
                     return true;
