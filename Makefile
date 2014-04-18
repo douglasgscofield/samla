@@ -60,6 +60,7 @@ samla: $(OBJS) $(VCFLIB_AR)
 
 version.h: .FORCE
 	./git-getversion.sh > version.h
+	echo "#define CXX_VERSION \""`$(CXX) --version | head -n 1`"\"" >> version.h
 	echo "#define CXXFLAGS \"$(CXXFLAGS)\"" >> version.h
 
 .FORCE:
