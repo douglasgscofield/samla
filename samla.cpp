@@ -2318,6 +2318,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             annotate_case_add_filter(v_ANS, ss.str());
             annotate_case(v_ANS, "Qual_G+W");
         }
+        ss.str("");
         ss << "noQR" << opt_gwa_lowqual_quality_ref;
         annotate_case_add_filter(v_ANS, ss.str());
         if (! opt_gwa_lowqual_lowqual_normal) {
@@ -2583,6 +2584,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             annotate_case_add_filter(v_ANS, ss.str());  // TODO add quality value failed
             annotate_case(v_ANS, "Qual_G+W");
         }
+        ss.str("");
         ss << "noQR" << opt_gwa_lowqual_quality_ref;
         annotate_case_add_filter(v_ANS, ss.str());
         if (vqsr_culprit == culprit_fail) {
