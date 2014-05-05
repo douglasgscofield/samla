@@ -1233,6 +1233,8 @@ main(int argc, char* argv[]) {
         header_vcf = vcfmine.get_VariantCallFilePtr(vcf_all);
     } else if (samla_method == "default") {
         header_vcf = vcfmine.get_VariantCallFilePtr(vcfmine.first_vcf);
+    } else {
+        exitmessage("don't know the source of the initial VCF header");
     }
     prepareVcfHeader(header_vcf);
 
