@@ -1360,7 +1360,7 @@ generate_culprit_string(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
 void
 set_filter(Variant& v, const string& a) {
-    if (! Headers.exists(a))
+    if (! opt_filter_annotate && ! opt_full_filter_annotate && ! Headers.exists(a))
         exitmessage("*** set_filter() Unknown filter ", a, ", does not exist in Headers.");
     v.filter = a;
     v.info["SamlaFilter"].push_back(a);
@@ -1368,7 +1368,7 @@ set_filter(Variant& v, const string& a) {
 
 void
 annotate_filter(Variant& v, const string& a) {
-    if (! Headers.exists(a))
+    if (! opt_filter_annotate && ! opt_full_filter_annotate && ! Headers.exists(a))
         exitmessage("*** annotate_filter() Unknown filter ", a, ", does not exist in Headers.");
     if (opt_filter_annotate) {
         //v.addFilter(string("Samla") + a);
