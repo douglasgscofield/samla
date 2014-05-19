@@ -12,6 +12,7 @@ samla-opt
 samla-profile
 samla-release
 samla-release-profile
+samla-old
 version.h
 a.out
 t.cpp
