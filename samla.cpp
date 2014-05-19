@@ -1252,9 +1252,9 @@ prepareVcfHeader(VariantCallFile * header_vcf) {
     Headers.add(Header_FILTER, "GWA1_W",   false, "Samla method 'gwa' case 1, variant output is derived from W; not a filter, output on option");
 
     Headers.add(Header_FILTER, "GWA2_G_G", false, "Samla method 'gwa' case 2, variant called in G, output is derived from G; not a filter, output on option");
-    Headers.add(Header_FILTER, "GWA2_A_G", false, "Samla method 'gwa' case 2, variant called in G, output is derived from A; not a filter, output on option");
+    Headers.add(Header_FILTER, "GWA2_G_A", false, "Samla method 'gwa' case 2, variant called in G, output is derived from A; not a filter, output on option");
     Headers.add(Header_FILTER, "GWA2_W_W", false, "Samla method 'gwa' case 2, variant called in W, output is derived from W; not a filter, output on option");
-    Headers.add(Header_FILTER, "GWA2_A_W", false, "Samla method 'gwa' case 2, variant called in W, output is derived from A; not a filter, output on option");
+    Headers.add(Header_FILTER, "GWA2_W_A", false, "Samla method 'gwa' case 2, variant called in W, output is derived from A; not a filter, output on option");
 
     Headers.add(Header_FILTER, "GWA3_G",   false, "Samla method 'gwa' case 3, output is derived from G; not a filter, output on option");
     Headers.add(Header_FILTER, "GWA3_W",   false, "Samla method 'gwa' case 3, output is derived from W; not a filter, output on option");
@@ -1268,18 +1268,18 @@ prepareVcfHeader(VariantCallFile * header_vcf) {
     Headers.add(Header_FILTER, "GWA5_G",   false, "Samla method 'gwa' case 5, output is derived from G; not a filter, output on option");
     Headers.add(Header_FILTER, "GWA5_W",   false, "Samla method 'gwa' case 5, output is derived from W; not a filter, output on option");
 
-    Headers.add(Header_FILTER, "GWA6_A_G", false, "Samla method 'gwa' case 6, no variant in A and G, VQSR'd variant in W, output derived from A; not a filter, output on option");
+    Headers.add(Header_FILTER, "GWA6_G_A", false, "Samla method 'gwa' case 6, no variant in A and G, VQSR'd variant in W, output derived from A; not a filter, output on option");
     Headers.add(Header_FILTER, "GWA6_G_G", false, "Samla method 'gwa' case 6, no variant in G, VQSR'd variant in W, variant in A, output derived from higher-quality G; not a filter, output on option");
-    Headers.add(Header_FILTER, "GWA6_W_G", false, "Samla method 'gwa' case 6, no variant in G, VQSR'd variant in W, variant in A, output derived from higher-quality W; not a filter, output on option");
-    Headers.add(Header_FILTER, "GWA6_A_W", false, "Samla method 'gwa' case 6, no variant in A and W, VQSR'd variant in G, output derived from A; not a filter, output on option");
-    Headers.add(Header_FILTER, "GWA6_G_W", false, "Samla method 'gwa' case 6, no variant in W, VQSR'd variant in G, variant in A, output derived from higher-quality G; not a filter, output on option");
+    Headers.add(Header_FILTER, "GWA6_G_W", false, "Samla method 'gwa' case 6, no variant in G, VQSR'd variant in W, variant in A, output derived from higher-quality W; not a filter, output on option");
+    Headers.add(Header_FILTER, "GWA6_W_A", false, "Samla method 'gwa' case 6, no variant in A and W, VQSR'd variant in G, output derived from A; not a filter, output on option");
+    Headers.add(Header_FILTER, "GWA6_W_G", false, "Samla method 'gwa' case 6, no variant in W, VQSR'd variant in G, variant in A, output derived from higher-quality G; not a filter, output on option");
     Headers.add(Header_FILTER, "GWA6_W_W", false, "Samla method 'gwa' case 6, no variant in W, VQSR'd variant in G, variant in A, output derived from higher-quality W; not a filter, output on option");
 
-    Headers.add(Header_FILTER, "GWA7_A_G", false, "Samla method 'gwa' case 7, no variant in A and G, LowQual variant in W, output derived from A; not a filter, output on option");
+    Headers.add(Header_FILTER, "GWA7_G_A", false, "Samla method 'gwa' case 7, no variant in A and G, LowQual variant in W, output derived from A; not a filter, output on option");
     Headers.add(Header_FILTER, "GWA7_G_G", false, "Samla method 'gwa' case 7, no variant in G, LowQual variant in W, variant in A, output derived from higher-quality G; not a filter, output on option");
-    Headers.add(Header_FILTER, "GWA7_W_G", false, "Samla method 'gwa' case 7, no variant in G, LowQual variant in W, variant in A, output derived from higher-quality W; not a filter, output on option");
-    Headers.add(Header_FILTER, "GWA7_A_W", false, "Samla method 'gwa' case 7, no variant in A and W, LowQual variant in G, output derived from A; not a filter, output on option");
-    Headers.add(Header_FILTER, "GWA7_G_W", false, "Samla method 'gwa' case 7, no variant in W, LowQual variant in G, variant in A, output derived from higher-quality G; not a filter, output on option");
+    Headers.add(Header_FILTER, "GWA7_G_W", false, "Samla method 'gwa' case 7, no variant in G, LowQual variant in W, variant in A, output derived from higher-quality W; not a filter, output on option");
+    Headers.add(Header_FILTER, "GWA7_W_A", false, "Samla method 'gwa' case 7, no variant in A and W, LowQual variant in G, output derived from A; not a filter, output on option");
+    Headers.add(Header_FILTER, "GWA7_W_G", false, "Samla method 'gwa' case 7, no variant in W, LowQual variant in G, variant in A, output derived from higher-quality G; not a filter, output on option");
     Headers.add(Header_FILTER, "GWA7_W_W", false, "Samla method 'gwa' case 7, no variant in W, LowQual variant in G, variant in A, output derived from higher-quality W; not a filter, output on option");
 
     Headers.add(Header_FILTER, "GWA8_G",   false, "Samla method 'gwa' case 8, no variant in W, variant in G, output derived from G; not a filter, output on option");
@@ -2073,7 +2073,7 @@ method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         }
     } else {
         v_ANS = create_return_variant(v_All);
-        annotate_first_case(v_ANS, "GWA2_A_G");
+        annotate_first_case(v_ANS, "GWA2_G_A");
         annotate_case_add_full_filter(v_ANS, "snpG");
         annotate_case_add_full_filter(v_ANS, "snpA");
     }
@@ -2121,7 +2121,7 @@ method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         }
     } else {
         v_ANS = create_return_variant(v_All);
-        annotate_first_case(v_ANS, "GWA2_A_W");
+        annotate_first_case(v_ANS, "GWA2_W_A");
         annotate_case_add_full_filter(v_ANS, "snpW");
         annotate_case_add_full_filter(v_ANS, "snpA");
     }
