@@ -2948,7 +2948,7 @@ method_gwa_case7_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 Variant
 method_gwa_case8_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 8_G method_gwa_case8_G()" << endl;
-    Variant v_ANS(v_Gen);
+    Variant v_ANS = create_return_variant(v_Gen);
     annotate_first_case(v_ANS, "GWA8_G");
     annotate_case_add_full_filter(v_ANS, "snpG");
     if (opt_gwa_enable_context_quality) {
@@ -2982,7 +2982,7 @@ method_gwa_case8_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 Variant
 method_gwa_case8_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 8_W method_gwa_case8_W()" << endl;
-    Variant v_ANS(v_Wga);
+    Variant v_ANS = create_return_variant(v_Wga);
     annotate_first_case(v_ANS, "GWA8_W");
     annotate_case_add_full_filter(v_ANS, "snpW");
     if (opt_gwa_enable_context_quality) {
