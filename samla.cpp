@@ -62,6 +62,9 @@
 //
 // VCF annotations removed by Samla:
 // culprit=
+// VQSLOD=
+// NEGATIVE_TRAIN_SITE
+// POSITIVE_TRAIN_SITE
 // what else?
 // do we ever need to change VariantType?
 //
@@ -1435,21 +1438,48 @@ generate_culprit_string(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
 Variant
 create_return_variant(Variant& v) {
-    Variant ans = v;
-    ans.filter = "";
-    return(ans);
+    // clear any fields we need to
+    Variant ANS = v;
+    ANS.filter = "";
+    ANS.info.erase("culprit");
+    ANS.info.erase("VQSLOD");
+    ANS.info.erase("NEGATIVE_TRAIN_SITE");
+    ANS.info.erase("POSITIVE_TRAIN_SITE");
+    return(ANS);
 }
 
 bool
-not_variant(Variant& v) {
-    // appropriate for "new" files from GATK, not for our modified alleles which will have PASS/FAIL
-    return(v.filter == "." && v.alleles[1] == ".");
+is_GATK_variant(Variant& v) {
+    // appropriate for "new" files from GATK, not for our modified alleles which will have PASS/FAIL for all sites
+    return(v.filter == "PASS" || (v.filter == "." && v.alleles[1] != "."));
 }
 
 bool
-not_variant_possible_filter(Variant& v) {
-    // appropriate for "new" files from GATK, not for our modified alleles which will have PASS/FAIL
+is_GATK_variant_loose(Variant& v) {
+    // appropriate for "new" files from GATK, not for our modified alleles which will have PASS/FAIL for all sites
+    // differs from above since the variant might be filtered; used in case 5
+    return(v.filter != "." || v.alleles[1] != ".");
+}
+
+bool
+not_GATK_variant(Variant& v) {
+    // appropriate for "new" files from GATK, not for our modified alleles which will have PASS/FAIL for all sites
     return((v.filter == "." || v.info["VariantType"][0] == "NO_VARIATION") && v.alleles[1] == ".");
+}
+
+bool
+is_VQSR(Variant& v) {
+    return(v.filter.substr(0, 4) == "VQSR");
+}
+
+bool
+is_LowQual(Variant& v) {
+    return(v.filter == "LowQual");
+}
+
+bool
+is_VQSR_or_LowQual(Variant& v) {
+    return(is_VQSR(v) || is_LowQual(v));
 }
 
 void
@@ -1589,9 +1619,9 @@ bool method_gwa(Variant& v_ANS, VcfStripmine::VariantConstPtr_vector& vars) {
         exitmessage(ss.str());
 
     if (DEBUG(2)) {
-        if (skip_case && not_variant(v_Gen)
-                      && not_variant(v_Wga)
-                      && not_variant(v_All)) {  // no variants to consider
+        if (skip_case && not_GATK_variant(v_Gen)
+                      && not_GATK_variant(v_Wga)
+                      && not_GATK_variant(v_All)) {  // no variants to consider
             return(true);
         }
         if (DEBUG(3)) {
@@ -1617,79 +1647,58 @@ bool method_gwa(Variant& v_ANS, VcfStripmine::VariantConstPtr_vector& vars) {
 
     // Variant v_ANS;
 
-    if ((v_Gen.filter == "PASS" || not_variant(v_Gen))         // CASE 1
-        && 
-        (v_Wga.filter == "PASS" || not_variant(v_Wga))) {
+    if (is_GATK_variant(v_Gen) && is_GATK_variant(v_Wga)) {                 // CASE 1
 
         v_ANS = method_gwa_case1(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "PASS" || not_variant(v_Gen))  // CASE 2_G
-               && 
-               (v_Wga.filter.substr(0, 4) == "VQSR" || v_Wga.filter == "LowQual")) {
+    } else if (is_GATK_variant(v_Gen) && is_VQSR_or_LowQual(v_Wga)) {       // CASE 2_G
 
         v_ANS = method_gwa_case2_G(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter.substr(0, 4) == "VQSR" || v_Gen.filter == "LowQual")            // CASE 2_W
-               && 
-               (v_Wga.filter == "PASS" || not_variant(v_Wga))) {
+    } else if (is_VQSR_or_LowQual(v_Gen) && is_GATK_variant(v_Wga)) {       // CASE 2_W
 
         v_ANS = method_gwa_case2_W(v_Gen, v_Wga, v_All);
 
-    } else if (v_Gen.filter.substr(0, 4) == "VQSR" && v_Wga.filter.substr(0, 4) == "VQSR") { // CASE 3
+    } else if (is_VQSR(v_Gen) && is_VQSR(v_Wga)) {                          // CASE 3
 
         v_ANS = method_gwa_case3(v_Gen, v_Wga, v_All);
 
-    } else if (v_Gen.filter == "LowQual" && v_Wga.filter == "LowQual") {                    // CASE 4
+    } else if (is_LowQual(v_Gen) && is_LowQual(v_Wga)) {                    // CASE 4
 
         v_ANS = method_gwa_case4(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter.substr(0, 4) == "VQSR" && v_Wga.filter == "LowQual")
+    } else if ((is_VQSR(v_Gen) && is_LowQual(v_Wga))
                ||
-               (v_Gen.filter == "LowQual" && v_Wga.filter.substr(0, 4) == "VQSR")) {         // CASE 5
+               (is_LowQual(v_Gen) && is_VQSR(v_Wga))) {                     // CASE 5
 
         v_ANS = method_gwa_case5(v_Gen, v_Wga, v_All);
 
-    } else if (not_variant(v_Gen)                     // CASE 6_G
-               && 
-               v_Wga.filter.substr(0, 4) == "VQSR") {
+    } else if (not_GATK_variant(v_Gen) && is_VQSR(v_Wga)) {                 // CASE 6_G
 
         v_ANS = method_gwa_case6_G(v_Gen, v_Wga, v_All);
 
-    } else if (v_Gen.filter.substr(0, 4) == "VQSR"                                  // CASE 6_W
-               && 
-               not_variant(v_Wga)) {
+    } else if (is_VQSR(v_Gen) && not_GATK_variant(v_Wga)) {                 // CASE 6_W
 
         v_ANS = method_gwa_case6_W(v_Gen, v_Wga, v_All);
 
-    } else if (not_variant(v_Gen)                     // CASE 7_G
-               && 
-               v_Wga.filter == "LowQual") {
+    } else if (not_GATK_variant(v_Gen) && is_LowQual(v_Wga)) {              // CASE 7_G
 
         v_ANS = method_gwa_case7_G(v_Gen, v_Wga, v_All);
 
-    } else if (v_Gen.filter == "LowQual"                                            // CASE 7_W
-               && 
-               not_variant(v_Wga)) {
+    } else if (is_LowQual(v_Gen) && not_GATK_variant(v_Wga)) {              // CASE 7_W
 
         v_ANS = method_gwa_case7_W(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "PASS" || not_variant(v_Gen))  // CASE 8_G
-               && 
-               not_variant(v_Wga)) {
+    } else if (is_GATK_variant(v_Gen) && not_GATK_variant(v_Wga)) {         // CASE 8_G
 
         v_ANS = method_gwa_case8_G(v_Gen, v_Wga, v_All);
 
-    } else if (not_variant(v_Gen)                    // CASE 8_W
-               && 
-               (v_Wga.filter == "PASS" || not_variant(v_Wga))) {
+    } else if (not_GATK_variant(v_Gen) && is_GATK_variant(v_Wga)) {         // CASE 8_W
 
         v_ANS = method_gwa_case8_W(v_Gen, v_Wga, v_All);
 
-    } else if (not_variant(v_Gen)                    // CASE 9
-               && 
-               not_variant(v_Wga)
-               && 
-               !skip_case) {
+    } else if (not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga) 
+            && !skip_case) {                                                // CASE 9
 
         v_ANS = method_gwa_case9(v_Gen, v_Wga, v_All);
 
@@ -1703,8 +1712,9 @@ bool method_gwa(Variant& v_ANS, VcfStripmine::VariantConstPtr_vector& vars) {
     string q = generate_gwa_qual_string(v_Gen, v_Wga, v_All);
     annotate_case_add_full_filter(v_ANS, q);
 
+    // this is now done by create_return_variant()
     // clear INFO fields we shouldn't have
-    v_ANS.info.erase("culprit");
+    // v_ANS.info.erase("culprit");
 
     // cout << v_ANS << endl;
 
@@ -2292,9 +2302,9 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case(v_ANS, "Qual_A");
         annotate_case_add_filter(v_ANS, "LowQual_LowQual_Fail");
 
-    } else if (not_variant_possible_filter(v_All) 
-            && not_variant_possible_filter(v_Gen) 
-            && not_variant_possible_filter(v_Wga) 
+    } else if (not_GATK_variant(v_All) 
+            && not_GATK_variant(v_Gen) 
+            && not_GATK_variant(v_Wga) 
             && passedQualityRef) {
 
 #define annotate_4_passedQualityRef(__S__) \
@@ -2350,7 +2360,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W contain a variant, use the one of higher quality
             // if neither contains a variant, we have to fail the site
 
-            if (opt_gwa_enable_context_quality && not_variant_possible_filter(v_Gen) && not_variant_possible_filter(v_Wga)) {
+            if (opt_gwa_enable_context_quality && not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga)) {
 
                 // no variant is available but we think there should be, fail the site
 
@@ -2365,7 +2375,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
             } else {
 
-                if (! not_variant_possible_filter(v_Gen) && ! not_variant_possible_filter(v_Wga)) {
+                if (! not_GATK_variant(v_Gen) && ! not_GATK_variant(v_Wga)) {
 
                     // both are available, pick one of higher quality and make its quality the contextual quality
                     if (v_Gen.quality >= v_Wga.quality) {
@@ -2382,7 +2392,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                     annotate_case_add_full_filter(v_ANS, "snpW");
                     annotate_case_add_full_filter(v_ANS, "noA");
 
-                } else if (! not_variant_possible_filter(v_Gen)) {
+                } else if (! not_GATK_variant(v_Gen)) {
 
                     // v_Gen has a variant
                     v_ANS = create_return_variant(v_Gen);
@@ -2393,7 +2403,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                     annotate_case_add_full_filter(v_ANS, "noW");
                     annotate_case_add_full_filter(v_ANS, "noA");
 
-                } else if (! not_variant_possible_filter(v_Wga)) {
+                } else if (! not_GATK_variant(v_Wga)) {
 
                     // v_Wga has a variant
                     v_ANS = create_return_variant(v_Wga);
@@ -2437,7 +2447,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W do not contain a variant, use the one of higher quality
             // if both contains a variant, we have to fail the site
 
-            if (not_variant(v_Gen) && not_variant(v_Wga)) {
+            if (not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga)) {
                 // both non-variants are available, pick one of higher quality and make its quality the contextual quality
                 if (v_Gen.quality >= v_Wga.quality) {
                     v_ANS = create_return_variant(v_Gen);
@@ -2454,7 +2464,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "noW");
                 annotate_case_add_full_filter(v_ANS, "snpA");
 
-            } else if (not_variant(v_Gen)) {
+            } else if (not_GATK_variant(v_Gen)) {
 
                 // v_Gen is non-variant, assuming that v_Wga is a (mistaken) variant
                 v_ANS = create_return_variant(v_Gen);
@@ -2464,7 +2474,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpW");
                 annotate_case_add_full_filter(v_ANS, "noG");
 
-            } else if (not_variant(v_Wga)) {
+            } else if (not_GATK_variant(v_Wga)) {
 
                 // v_Wga is non-variant, assuming that v_Gen is a (mistaken) variant
                 v_ANS = create_return_variant(v_Wga);
@@ -2474,7 +2484,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
-            } else if (! not_variant(v_Gen) && ! not_variant(v_Gen)) {
+            } else if (! not_GATK_variant(v_Gen) && ! not_GATK_variant(v_Gen)) {
 
                 // only variants available, fail the site
                 v_ANS = create_return_variant(v_All);
@@ -2603,9 +2613,9 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W contain a variant, use the one of higher quality
             // if neither contains a variant, we have to fail the site
 
-            if (! not_variant(v_Gen) && ! not_variant(v_Wga)) {
+            if (is_GATK_variant_loose(v_Gen) && is_GATK_variant_loose(v_Wga)) {
 
-                // both are available, pick one of higher quality and make its quality the contextual quality
+                // both are available, pick one of higher quality and adjust its quality
                 if (v_Gen.quality >= v_Wga.quality) {
                     v_ANS = create_return_variant(v_Gen);
                     annotate_5_passedQuality("GWA5_G");
@@ -2619,7 +2629,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "snpW");
 
-            } else if (! not_variant(v_Gen)) {
+            } else if (is_GATK_variant_loose(v_Gen)) {
 
                 // v_Gen has a variant
                 v_ANS = create_return_variant(v_Gen);
@@ -2630,7 +2640,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
-            } else if (! not_variant(v_Wga)) {
+            } else if (is_GATK_variant_loose(v_Wga)) {
 
                 // v_Wga has a variant
                 v_ANS = create_return_variant(v_Wga);
@@ -2641,7 +2651,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "noG");
                 annotate_case_add_full_filter(v_ANS, "snpW");
 
-            } else if (not_variant(v_Gen) && not_variant(v_Gen)) {
+            } else if (not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga)) {
 
                 // no variant is available, fail the site
                 v_ANS = create_return_variant(v_All);
@@ -2698,7 +2708,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W do not contain a variant, use the one of higher quality
             // if both contains a variant, we have to fail the site
 
-            if (not_variant_possible_filter(v_Gen) && not_variant_possible_filter(v_Wga)) {
+            if (not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga)) {
                 // both non-variants are available, pick one of higher quality and make its quality the contextual quality
                 if (v_Gen.quality >= v_Wga.quality) {
                     v_ANS = create_return_variant(v_Gen);
@@ -2713,7 +2723,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "noG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
-            } else if (not_variant_possible_filter(v_Gen)) {
+            } else if (not_GATK_variant(v_Gen)) {
 
                 // v_Gen is non-variant, assuming that v_Wga is a (mistaken) variant
                 v_ANS = create_return_variant(v_Gen);
@@ -2724,7 +2734,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "noG");
                 annotate_case_add_full_filter(v_ANS, "snpW");
 
-            } else if (not_variant_possible_filter(v_Wga)) {
+            } else if (not_GATK_variant(v_Wga)) {
 
                 // v_Wga is non-variant, assuming that v_Gen is a (mistaken) variant
                 v_ANS = create_return_variant(v_Wga);
@@ -2735,7 +2745,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
-            } else if (! not_variant_possible_filter(v_Gen) && ! not_variant_possible_filter(v_Gen)) {
+            } else if (is_GATK_variant_loose(v_Gen) && is_GATK_variant_loose(v_Gen)) {
 
                 // only variants available, fail the site
                 v_ANS = create_return_variant(v_All);
@@ -2875,7 +2885,7 @@ method_gwa_case7_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case_add_full_filter(v_ANS, "noG");
         annotate_case_add_full_filter(v_ANS, "snpA");
         // what we do with the quality depends on what is in the LowQual variant
-        if (not_variant_possible_filter(v_Wga)) {
+        if (not_GATK_variant(v_Wga)) {
             v_ANS.quality += v_Wga.quality;
         }
         if (DEBUG(2)) {
@@ -2913,7 +2923,7 @@ method_gwa_case7_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case_add_full_filter(v_ANS, "noW");
         annotate_case_add_full_filter(v_ANS, "snpA");
         // what we do with the quality depends on what is in the LowQual variant
-        if (not_variant_possible_filter(v_Gen)) {
+        if (not_GATK_variant(v_Gen)) {
             v_ANS.quality += v_Gen.quality;
         }
         if (DEBUG(2)) {
