@@ -1443,8 +1443,8 @@ create_return_variant(Variant& v) {
     ANS.filter = "";
     ANS.info.erase("culprit");
     ANS.info.erase("VQSLOD");
-    ANS.info.erase("NEGATIVE_TRAIN_SITE");
-    ANS.info.erase("POSITIVE_TRAIN_SITE");
+    ANS.infoFlags.erase("NEGATIVE_TRAIN_SITE");
+    ANS.infoFlags.erase("POSITIVE_TRAIN_SITE");
     return(ANS);
 }
 
