@@ -944,6 +944,7 @@ exitmessage(const string& msg, const string& msg2, const string& msg3, const str
 
 static void
 exitusage(const string& msg, const string& msg2, const string& msg3, const string& msg4, const string& msg5) {
+#define show_set(__f__) if (__f__) cerr << " [set]";
     if (! msg.empty()) cerr << endl << "*** " << msg << msg2 << msg3 << msg4 << msg5 << endl;
     cerr << endl;
     cerr << "Usage:   " << NAME << " [options] -r refnames.txt <in1.vcf> [ in2.vcf ... ]" << endl;
@@ -958,9 +959,9 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << "     --debug INT                  debug info level INT [" << opt_debug << "]" << endl;
     cerr << "     --progress INT               print variants processed mod INT [" << opt_progress << "]" << endl;
     cerr << endl;
-    cerr << "     --filter-annotate            annotate FILTER field with additional method-specific information"; if (opt_filter_annotate) cerr << " [set]"; cerr << endl;
-    cerr << "     --full-filter-annotate       annotate FILTER field with even more method-specific information"; if (opt_full_filter_annotate) cerr << " [set]"; cerr << endl;
-    cerr << "     --no-filter-annotate         do not annotate FILTER field, use only PASS and filters indicating failure described in the VCF header"; if (!opt_filter_annotate) cerr << " [set]"; cerr << endl;
+    cerr << "     --filter-annotate            annotate FILTER field with additional method-specific information"; show_set(opt_filter_annotate); cerr << endl;
+    cerr << "     --full-filter-annotate       annotate FILTER field with even more method-specific information"; show_set(opt_full_filter_annotate); cerr << endl;
+    cerr << "     --no-filter-annotate         do not annotate FILTER field, use only PASS and filters indicating failure described in the VCF header"; show_set(!opt_filter_annotate); cerr << endl;
     cerr << endl;
     cerr << "     --method METHOD              use combining method 'METHOD', only 'gwa' and 'gwa-ksp' are implemented" << endl;
     cerr << endl;
@@ -977,15 +978,16 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << "     --gwa-mixed-quality FLOAT        minimum quality when combining VQSR with LowQual variants [" << opt_gwa_mixed_quality << "]" << endl;
     cerr << "     --gwa-mixed-quality-ref FLOAT    minimum quality to meet when combining VQSR with LowQual variants and call matches reference [" << opt_gwa_mixed_quality_ref << "]" << endl;
     cerr << endl;
-    cerr << "     --gwa-enable-context-quality     enables usage of context quality"; if (opt_gwa_enable_context_quality) cerr << " [set]"; cerr << endl;
-    cerr << "     --gwa-disable-context-quality    disables usage of context quality, qualities instead compared directly"; if (! opt_gwa_enable_context_quality) cerr << " [set]"; cerr << endl;
+    cerr << "     --gwa-enable-context-quality     enables usage of context quality"; show_set(opt_gwa_enable_context_quality); cerr << endl;
+    cerr << "     --gwa-disable-context-quality    disables usage of context quality, qualities instead compared directly"; show_set(! opt_gwa_enable_context_quality); cerr << endl;
+    cerr << "                                      NOTE: context quality is very experimental and may be incorrect, use at you rown risk" << endl;
     cerr << endl;
-    cerr << "     --gwa-vqsr-vqsr-fail             mark as FAIL all cases having both genomic and WGA VQSR-filtered variants"; if (! opt_gwa_vqsr_vqsr_normal) cerr << " [set]"; cerr << endl;
-    cerr << "     --gwa-vqsr-vqsr-normal           PASS/FAIL cases having both genomic and WGA VQSR-filtered variants depending on culprits"; if (opt_gwa_vqsr_vqsr_normal) cerr << " [set]"; cerr << endl;
-    cerr << "     --gwa-lowqual-lowqual-fail       mark as FAIL all cases having both genomic and WGA LowQual-filtered variants"; if (! opt_gwa_lowqual_lowqual_normal) cerr << " [set]"; cerr << endl;
-    cerr << "     --gwa-lowqual-lowqual-normal     PASS/FAIL cases having both genomic and WGA LowQual-filtered variants depending on culprits"; if (opt_gwa_lowqual_lowqual_normal) cerr << " [set]"; cerr << endl;
-    cerr << "     --gwa-mixed-fail                 mark as FAIL all cases having both a VQSR-filtered and a LowQual-filtered variant"; if (! opt_gwa_mixed_normal) cerr << " [set]"; cerr << endl;
-    cerr << "     --gwa-mixed-normal               PASS/FAIL cases having both a VQSR-filtered and a LowQual-filtered variant"; if (opt_gwa_mixed_normal) cerr << " [set]"; cerr << endl;
+    cerr << "     --gwa-vqsr-vqsr-fail             mark as FAIL all cases having both genomic and WGA VQSR-filtered variants"; show_set(! opt_gwa_vqsr_vqsr_normal); cerr << endl;
+    cerr << "     --gwa-vqsr-vqsr-normal           PASS/FAIL cases having both genomic and WGA VQSR-filtered variants depending on culprits"; show_set(opt_gwa_vqsr_vqsr_normal); cerr << endl;
+    cerr << "     --gwa-lowqual-lowqual-fail       mark as FAIL all cases having both genomic and WGA LowQual-filtered variants"; show_set(! opt_gwa_lowqual_lowqual_normal); cerr << endl;
+    cerr << "     --gwa-lowqual-lowqual-normal     PASS/FAIL cases having both genomic and WGA LowQual-filtered variants depending on culprits"; show_set(opt_gwa_lowqual_lowqual_normal); cerr << endl;
+    cerr << "     --gwa-mixed-fail                 mark as FAIL all cases having both a VQSR-filtered and a LowQual-filtered variant"; show_set(! opt_gwa_mixed_normal); cerr << endl;
+    cerr << "     --gwa-mixed-normal               PASS/FAIL cases having both a VQSR-filtered and a LowQual-filtered variant"; show_set(opt_gwa_mixed_normal); cerr << endl;
     cerr << endl;
     cerr << "                                      --gwa-vqsr-lowqual-fail and --gwa-vqsr-lowqual-normal are synonyms for the above --gwa-mixed-* options" << endl;
     cerr << endl;
@@ -1438,6 +1440,18 @@ create_return_variant(Variant& v) {
     return(ans);
 }
 
+bool
+not_variant(Variant& v) {
+    // appropriate for "new" files from GATK, not for our modified alleles which will have PASS/FAIL
+    return(v.filter == "." && v.alleles[1] == ".");
+}
+
+bool
+not_variant_possible_filter(Variant& v) {
+    // appropriate for "new" files from GATK, not for our modified alleles which will have PASS/FAIL
+    return((v.filter == "." || v.info["VariantType"][0] == "NO_VARIATION") && v.alleles[1] == ".");
+}
+
 void
 set_filter(Variant& v, const string& a) {
     if (! opt_filter_annotate && ! opt_full_filter_annotate && ! Headers.exists(a))
@@ -1575,9 +1589,9 @@ bool method_gwa(Variant& v_ANS, VcfStripmine::VariantConstPtr_vector& vars) {
         exitmessage(ss.str());
 
     if (DEBUG(2)) {
-        if (skip_case && v_Gen.filter == "." && v_Gen.alleles[1] == "."
-                      && v_Wga.filter == "." && v_Wga.alleles[1] == "."
-                      && v_All.filter == "." && v_All.alleles[1] == ".") {  // no variants to consider
+        if (skip_case && not_variant(v_Gen)
+                      && not_variant(v_Wga)
+                      && not_variant(v_All)) {  // no variants to consider
             return(true);
         }
         if (DEBUG(3)) {
@@ -1603,13 +1617,13 @@ bool method_gwa(Variant& v_ANS, VcfStripmine::VariantConstPtr_vector& vars) {
 
     // Variant v_ANS;
 
-    if ((v_Gen.filter == "PASS" || (v_Gen.filter == "." && v_Gen.alleles[1] != "."))         // CASE 1
+    if ((v_Gen.filter == "PASS" || not_variant(v_Gen))         // CASE 1
         && 
-        (v_Wga.filter == "PASS" || (v_Wga.filter == "." && v_Wga.alleles[1] != "."))) {
+        (v_Wga.filter == "PASS" || not_variant(v_Wga))) {
 
         v_ANS = method_gwa_case1(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "PASS" || (v_Gen.filter == "." && v_Gen.alleles[1] != "."))  // CASE 2_G
+    } else if ((v_Gen.filter == "PASS" || not_variant(v_Gen))  // CASE 2_G
                && 
                (v_Wga.filter.substr(0, 4) == "VQSR" || v_Wga.filter == "LowQual")) {
 
@@ -1617,7 +1631,7 @@ bool method_gwa(Variant& v_ANS, VcfStripmine::VariantConstPtr_vector& vars) {
 
     } else if ((v_Gen.filter.substr(0, 4) == "VQSR" || v_Gen.filter == "LowQual")            // CASE 2_W
                && 
-               (v_Wga.filter == "PASS" || (v_Wga.filter == "." && v_Wga.alleles[1] != "."))) {
+               (v_Wga.filter == "PASS" || not_variant(v_Wga))) {
 
         v_ANS = method_gwa_case2_W(v_Gen, v_Wga, v_All);
 
@@ -1635,7 +1649,7 @@ bool method_gwa(Variant& v_ANS, VcfStripmine::VariantConstPtr_vector& vars) {
 
         v_ANS = method_gwa_case5(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                     // CASE 6_G
+    } else if (not_variant(v_Gen)                     // CASE 6_G
                && 
                v_Wga.filter.substr(0, 4) == "VQSR") {
 
@@ -1643,11 +1657,11 @@ bool method_gwa(Variant& v_ANS, VcfStripmine::VariantConstPtr_vector& vars) {
 
     } else if (v_Gen.filter.substr(0, 4) == "VQSR"                                  // CASE 6_W
                && 
-               (v_Wga.filter == "." && v_Wga.alleles[1] == ".")) {
+               not_variant(v_Wga)) {
 
         v_ANS = method_gwa_case6_W(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                     // CASE 7_G
+    } else if (not_variant(v_Gen)                     // CASE 7_G
                && 
                v_Wga.filter == "LowQual") {
 
@@ -1655,25 +1669,25 @@ bool method_gwa(Variant& v_ANS, VcfStripmine::VariantConstPtr_vector& vars) {
 
     } else if (v_Gen.filter == "LowQual"                                            // CASE 7_W
                && 
-               (v_Wga.filter == "." && v_Wga.alleles[1] == ".")) {
+               not_variant(v_Wga)) {
 
         v_ANS = method_gwa_case7_W(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "PASS" || (v_Gen.filter == "." && v_Gen.alleles[1] != "."))  // CASE 8_G
+    } else if ((v_Gen.filter == "PASS" || not_variant(v_Gen))  // CASE 8_G
                && 
-               (v_Wga.filter == "." && v_Wga.alleles[1] == ".")) {
+               not_variant(v_Wga)) {
 
         v_ANS = method_gwa_case8_G(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                    // CASE 8_W
+    } else if (not_variant(v_Gen)                    // CASE 8_W
                && 
-               (v_Wga.filter == "PASS" || (v_Wga.filter == "." && v_Wga.alleles[1] != "."))) {
+               (v_Wga.filter == "PASS" || not_variant(v_Wga))) {
 
         v_ANS = method_gwa_case8_W(v_Gen, v_Wga, v_All);
 
-    } else if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".")                    // CASE 9
+    } else if (not_variant(v_Gen)                    // CASE 9
                && 
-               (v_Wga.filter == "." && v_Wga.alleles[1] == ".")
+               not_variant(v_Wga)
                && 
                !skip_case) {
 
@@ -2058,9 +2072,10 @@ method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
     // Combine strength from both, using straight quality for the variant and
     // contextual quality for the filtered one if LowQual and straight quality
-    // We don't know if we pass until we have assembled all the qualities.  Do
-    // we ever care about context quality here?
+    // We don't know if we pass until we have assembled all the qualities.
     if (DEBUG(2)) cout << "*** case 2_G method_gwa_case2_G()" << endl;
+    double qdelta = (v_Wga.quality - qualwindow_Wga.mean());
+    double q = (v_Wga.filter == "LowQual" && opt_gwa_enable_context_quality) ? abs(qdelta) : v_Wga.quality;
     Variant v_ANS;
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = create_return_variant(v_Gen);
@@ -2077,11 +2092,16 @@ method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case_add_full_filter(v_ANS, "snpG");
         annotate_case_add_full_filter(v_ANS, "snpA");
     }
-    v_ANS.quality = v_Gen.quality + v_Wga.quality;
-    annotate_case(v_ANS, "Qual_G+W");
+    v_ANS.quality = v_Gen.quality + q;
     if (v_Wga.filter.substr(0, 4) == "VQSR") {
+        annotate_case(v_ANS, "Qual_G+W");
         annotate_case_add_full_filter(v_ANS, "vqsrW");
     } else if (v_Wga.filter == "LowQual") {
+        if (opt_gwa_enable_context_quality) {
+            annotate_case(v_ANS, "Qual_G+WContext");
+        } else {
+            annotate_case(v_ANS, "Qual_G+W");
+        }
         annotate_case_add_full_filter(v_ANS, "lowqualW");
     } else {
         cerr << "**2_G* unhandled v_Wga.filter case" << endl; exit(1);
@@ -2105,10 +2125,11 @@ method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
     // Combine strength from both, using straight quality for the variant and
     // contextual quality for the filtered one if LowQual and straight quality
-    // if VQSR.
-    // We don\t know if we pass until we have assembled all the qualities.  Do
-    // we ever care about context quality here?
+    // if VQSR.  We don't know if we pass until we have assembled all the
+    // qualities.
     if (DEBUG(2)) cout << "*** case 2_W method_gwa_case2_W()" << endl;
+    double qdelta = (v_Wga.quality - qualwindow_Wga.mean());
+    double q = (v_Wga.filter == "LowQual" && opt_gwa_enable_context_quality) ? abs(qdelta) : v_Wga.quality;
     Variant v_ANS;
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = create_return_variant(v_Wga);
@@ -2125,12 +2146,17 @@ method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case_add_full_filter(v_ANS, "snpW");
         annotate_case_add_full_filter(v_ANS, "snpA");
     }
-    v_ANS.quality = v_Wga.quality + v_Gen.quality;
-    annotate_case(v_ANS, "Qual_W+G");
+    v_ANS.quality = v_Wga.quality + q;
     if (v_Gen.filter.substr(0, 4) == "VQSR") {
+        annotate_case(v_ANS, "Qual_W+G");
         annotate_case_add_full_filter(v_ANS, "vqsrG");
     } else if (v_Gen.filter == "LowQual") {
-        annotate_case_add_full_filter(v_ANS, "lowqualW");
+        if (opt_gwa_enable_context_quality) {
+            annotate_case(v_ANS, "Qual_W+GContext");
+        } else {
+            annotate_case(v_ANS, "Qual_W+G");
+        }
+        annotate_case_add_full_filter(v_ANS, "lowqualG");
     } else {
         cerr << "**2_W* unhandled v_Gen.filter case" << endl; exit(1);
     }
@@ -2266,6 +2292,34 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case(v_ANS, "Qual_A");
         annotate_case_add_filter(v_ANS, "LowQual_LowQual_Fail");
 
+    } else if (not_variant_possible_filter(v_All) 
+            && not_variant_possible_filter(v_Gen) 
+            && not_variant_possible_filter(v_Wga) 
+            && passedQualityRef) {
+
+#define annotate_4_passedQualityRef(__S__) \
+            { \
+                annotate_first_case(v_ANS, __S__); \
+                if (opt_gwa_enable_context_quality) { \
+                    annotate_failed_ContextQuality(v_ANS, opt_gwa_lowqual_quality); \
+                    annotate_case(v_ANS, "Qual_GContext+WContext"); \
+                } else { \
+                    annotate_failed_Quality(v_ANS, opt_gwa_lowqual_quality); \
+                    annotate_case(v_ANS, "Qual_G+W"); \
+                } \
+                annotate_passed_QualityRef(v_ANS, opt_gwa_lowqual_quality_ref); \
+            }
+
+        // we have no variant anywhere and passed QualityRef
+
+        v_ANS = create_return_variant(v_All);
+        set_filter(v_ANS, "PASS");
+        v_ANS.quality = q_site;
+        annotate_4_passedQualityRef("GWA4_A");
+        annotate_case_add_full_filter(v_ANS, "noG");
+        annotate_case_add_full_filter(v_ANS, "noW");
+        annotate_case_add_full_filter(v_ANS, "noA");
+
     } else if (passedQuality) {
 
 #define annotate_4_passedQuality(__S__) \
@@ -2296,9 +2350,10 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W contain a variant, use the one of higher quality
             // if neither contains a variant, we have to fail the site
 
-            if (v_Gen.filter == "." && v_Gen.alleles[1] == "." && v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
+            if (opt_gwa_enable_context_quality && not_variant_possible_filter(v_Gen) && not_variant_possible_filter(v_Wga)) {
 
-                // no variant is available, fail the site
+                // no variant is available but we think there should be, fail the site
+
                 v_ANS = create_return_variant(v_All);
                 set_filter(v_ANS, "FAIL");
                 v_ANS.quality = q_site;
@@ -2310,7 +2365,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
             } else {
 
-                if ((v_Gen.filter != "." || v_Gen.alleles[1] != ".") && (v_Wga.filter != "." || v_Wga.alleles[1] != ".")) {
+                if (! not_variant_possible_filter(v_Gen) && ! not_variant_possible_filter(v_Wga)) {
 
                     // both are available, pick one of higher quality and make its quality the contextual quality
                     if (v_Gen.quality >= v_Wga.quality) {
@@ -2327,7 +2382,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                     annotate_case_add_full_filter(v_ANS, "snpW");
                     annotate_case_add_full_filter(v_ANS, "noA");
 
-                } else if (v_Gen.filter != "." || v_Gen.alleles[1] != ".") {
+                } else if (! not_variant_possible_filter(v_Gen)) {
 
                     // v_Gen has a variant
                     v_ANS = create_return_variant(v_Gen);
@@ -2338,7 +2393,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                     annotate_case_add_full_filter(v_ANS, "noW");
                     annotate_case_add_full_filter(v_ANS, "noA");
 
-                } else if (v_Wga.filter != "." || v_Wga.alleles[1] != ".") {
+                } else if (! not_variant_possible_filter(v_Wga)) {
 
                     // v_Wga has a variant
                     v_ANS = create_return_variant(v_Wga);
@@ -2366,19 +2421,6 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
     } else if (passedQualityRef) {
 
-#define annotate_4_passedQualityRef(__S__) \
-            { \
-                annotate_first_case(v_ANS, __S__); \
-                if (opt_gwa_enable_context_quality) { \
-                    annotate_failed_ContextQuality(v_ANS, opt_gwa_lowqual_quality); \
-                    annotate_case(v_ANS, "Qual_GContext+WContext"); \
-                } else { \
-                    annotate_failed_Quality(v_ANS, opt_gwa_lowqual_quality); \
-                    annotate_case(v_ANS, "Qual_G+W"); \
-                } \
-                annotate_passed_QualityRef(v_ANS, opt_gwa_lowqual_quality_ref); \
-            }
-
         // We do not think we should have a variant here, we think we should match the reference, can we do that?
 
         if (v_All.info["VariantType"][0] == "NO_VARIATION") {
@@ -2395,7 +2437,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W do not contain a variant, use the one of higher quality
             // if both contains a variant, we have to fail the site
 
-            if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".") && (v_Wga.filter == "." && v_Wga.alleles[1] == ".")) {
+            if (not_variant(v_Gen) && not_variant(v_Wga)) {
                 // both non-variants are available, pick one of higher quality and make its quality the contextual quality
                 if (v_Gen.quality >= v_Wga.quality) {
                     v_ANS = create_return_variant(v_Gen);
@@ -2412,7 +2454,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "noW");
                 annotate_case_add_full_filter(v_ANS, "snpA");
 
-            } else if (v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
+            } else if (not_variant(v_Gen)) {
 
                 // v_Gen is non-variant, assuming that v_Wga is a (mistaken) variant
                 v_ANS = create_return_variant(v_Gen);
@@ -2422,7 +2464,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpW");
                 annotate_case_add_full_filter(v_ANS, "noG");
 
-            } else if (v_Wga.filter == "." && v_Wga.alleles[1] == ".") {
+            } else if (not_variant(v_Wga)) {
 
                 // v_Wga is non-variant, assuming that v_Gen is a (mistaken) variant
                 v_ANS = create_return_variant(v_Wga);
@@ -2432,7 +2474,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
-            } else if ((v_Gen.filter != "." || v_Gen.alleles[1] != ".") && (v_Gen.filter != "." || v_Gen.alleles[1] != ".")) {
+            } else if (! not_variant(v_Gen) && ! not_variant(v_Gen)) {
 
                 // only variants available, fail the site
                 v_ANS = create_return_variant(v_All);
@@ -2523,7 +2565,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         //fail all these cases
         v_ANS = create_return_variant(v_All);
         set_filter(v_ANS, "FAIL");
-        annotate_first_case(v_ANS, "GWA4_A");
+        annotate_first_case(v_ANS, "GWA5_A");
         annotate_case(v_ANS, "Qual_A");
         annotate_case_add_filter(v_ANS, "Mixed_Fail");
 
@@ -2561,7 +2603,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W contain a variant, use the one of higher quality
             // if neither contains a variant, we have to fail the site
 
-            if ((v_Gen.filter != "." || v_Gen.alleles[1] != ".") && (v_Wga.filter != "." || v_Wga.alleles[1] != ".")) {
+            if (! not_variant(v_Gen) && ! not_variant(v_Wga)) {
 
                 // both are available, pick one of higher quality and make its quality the contextual quality
                 if (v_Gen.quality >= v_Wga.quality) {
@@ -2577,7 +2619,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "snpW");
 
-            } else if (v_Gen.filter != "." || v_Gen.alleles[1] != ".") {
+            } else if (! not_variant(v_Gen)) {
 
                 // v_Gen has a variant
                 v_ANS = create_return_variant(v_Gen);
@@ -2588,7 +2630,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
-            } else if (v_Wga.filter != "." || v_Wga.alleles[1] != ".") {
+            } else if (! not_variant(v_Wga)) {
 
                 // v_Wga has a variant
                 v_ANS = create_return_variant(v_Wga);
@@ -2599,7 +2641,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "noG");
                 annotate_case_add_full_filter(v_ANS, "snpW");
 
-            } else if (v_Gen.filter == "." && v_Gen.alleles[1] == "." && v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
+            } else if (not_variant(v_Gen) && not_variant(v_Gen)) {
 
                 // no variant is available, fail the site
                 v_ANS = create_return_variant(v_All);
@@ -2656,7 +2698,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W do not contain a variant, use the one of higher quality
             // if both contains a variant, we have to fail the site
 
-            if ((v_Gen.filter == "." && v_Gen.alleles[1] == ".") && (v_Wga.filter == "." && v_Wga.alleles[1] == ".")) {
+            if (not_variant_possible_filter(v_Gen) && not_variant_possible_filter(v_Wga)) {
                 // both non-variants are available, pick one of higher quality and make its quality the contextual quality
                 if (v_Gen.quality >= v_Wga.quality) {
                     v_ANS = create_return_variant(v_Gen);
@@ -2671,7 +2713,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "noG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
-            } else if (v_Gen.filter == "." && v_Gen.alleles[1] == ".") {
+            } else if (not_variant_possible_filter(v_Gen)) {
 
                 // v_Gen is non-variant, assuming that v_Wga is a (mistaken) variant
                 v_ANS = create_return_variant(v_Gen);
@@ -2682,7 +2724,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "noG");
                 annotate_case_add_full_filter(v_ANS, "snpW");
 
-            } else if (v_Wga.filter == "." && v_Wga.alleles[1] == ".") {
+            } else if (not_variant_possible_filter(v_Wga)) {
 
                 // v_Wga is non-variant, assuming that v_Gen is a (mistaken) variant
                 v_ANS = create_return_variant(v_Wga);
@@ -2693,7 +2735,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
-            } else if ((v_Gen.filter != "." || v_Gen.alleles[1] != ".") && (v_Gen.filter != "." || v_Gen.alleles[1] != ".")) {
+            } else if (! not_variant_possible_filter(v_Gen) && ! not_variant_possible_filter(v_Gen)) {
 
                 // only variants available, fail the site
                 v_ANS = create_return_variant(v_All);
@@ -2832,6 +2874,10 @@ method_gwa_case7_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case(v_ANS, "Qual_G");
         annotate_case_add_full_filter(v_ANS, "noG");
         annotate_case_add_full_filter(v_ANS, "snpA");
+        // what we do with the quality depends on what is in the LowQual variant
+        if (not_variant_possible_filter(v_Wga)) {
+            v_ANS.quality += v_Wga.quality;
+        }
         if (DEBUG(2)) {
             cerr << "**7_G** v_Gen is '.' with v_Wga LowQual but v_All *is* a variant" << endl;
             cerr << "**7_G** G " << v_Gen << endl << "**7_G** W " << v_Wga << endl << "**7_G** A " << v_All << endl;
@@ -2866,6 +2912,10 @@ method_gwa_case7_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case(v_ANS, "Qual_W");
         annotate_case_add_full_filter(v_ANS, "noW");
         annotate_case_add_full_filter(v_ANS, "snpA");
+        // what we do with the quality depends on what is in the LowQual variant
+        if (not_variant_possible_filter(v_Gen)) {
+            v_ANS.quality += v_Gen.quality;
+        }
         if (DEBUG(2)) {
             cerr << "**7_W** v_Gen is LowQual with v_Wga '.' but v_All *is* a variant" << endl;
             cerr << "**7_W** G " << v_Gen << endl << "**7_W** W " << v_Wga << endl << "**7_W** A " << v_All << endl;
