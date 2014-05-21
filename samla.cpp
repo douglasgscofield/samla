@@ -991,8 +991,8 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << "     --gwa-mixed-quality FLOAT        minimum quality when combining VQSR with LowQual variants [" << opt_gwa_mixed_quality << "]" << endl;
     cerr << "     --gwa-mixed-quality-ref FLOAT    minimum quality to meet when combining VQSR with LowQual variants and call matches reference [" << opt_gwa_mixed_quality_ref << "]" << endl;
     cerr << endl;
-    cerr << "     --gwa-force-consistency          force potentially ambiguous case 4 to require G, W and A to agree on variant/no-variant to pass"; show_set(opt_gwa_force_consistency); cerr << endl;
-    cerr << "     --gwa-no-force-consistency       do not require G, W and A to agree with potentially ambiguous case 4"; show_set(! opt_gwa_force_consistency); cerr << endl;
+    cerr << "     --gwa-force-consistency          require G, W and A to agree on variant/no-variant for potentially ambiguous cases 4 and 5"; show_set(opt_gwa_force_consistency); cerr << endl;
+    cerr << "     --gwa-no-force-consistency       do not require G, W and A to agree on variant/no-variant for potentially ambiguous cases 4 and 5"; show_set(opt_gwa_force_consistency); cerr << endl;
     cerr << endl;
     cerr << "     --gwa-enable-context-quality     enables usage of context quality"; show_set(opt_gwa_enable_context_quality); cerr << endl;
     cerr << "     --gwa-disable-context-quality    disables usage of context quality, qualities instead compared directly"; show_set(! opt_gwa_enable_context_quality); cerr << endl;
