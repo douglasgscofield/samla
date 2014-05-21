@@ -696,6 +696,7 @@ generate_full_command_line_string() {
     ss << " " << "--gwa-lowqual-quality-ref"  << " " << opt_gwa_lowqual_quality_ref;
     ss << " " << "--gwa-mixed-quality"  << " " << opt_gwa_mixed_quality;
     ss << " " << "--gwa-mixed-quality-ref"  << " " << opt_gwa_mixed_quality_ref;
+    ss << " " << (opt_gwa_force_consistency ? "--gwa-force-consistency" : "--gwa-no-force-consistency");
     ss << " " << (opt_gwa_enable_context_quality ? "--gwa-enable-context-quality" : "--gwa-disable-context-quality");
     ss << " " << (opt_gwa_vqsr_vqsr_normal ? "--gwa-vqsr-vqsr-normal" : "--gwa-vqsr-vqsr-fail");
     ss << " " << (opt_gwa_lowqual_lowqual_normal ? "--gwa-lowqual-lowqual-normal" : "--gwa-lowqual-lowqual-fail");
@@ -1236,7 +1237,8 @@ prepareVcfHeader(VariantCallFile * header_vcf) {
         Headers.add(Header_FILTER, "LowQual_LowQual_Fail", true,  "Both G and W variants are LowQual-filtered, automatic failure");
     if (! opt_gwa_mixed_normal)
         Headers.add(Header_FILTER, "Mixed_Fail",           true,  "One of G and W variants are VQSR-filtered, other is LowQual-filtered, automatic failure");
-    Headers.add(Header_FILTER, "Inconsistent",             true,  "G, W and A do not agree as to variant/no-variant in potentially ambiguous cases");
+    if (opt_gwa_force_consistency)
+        Headers.add(Header_FILTER, "Inconsistent",         true,  "G, W and A do not agree as to variant/no-variant in potentially ambiguous cases");
     Headers.add(Header_FILTER, "culpritFail",              true,  "Combination of VQSR culprits incompatible for variant call");
     Headers.add(Header_FILTER, "culpritPass",              false, "Combination of VQSR culprits compatible for variant call; not a filter, output on option");
     Headers.add(Header_FILTER, "quality:",                 false, "Samla method 'gwa' set of quality and contextual quality values for G, W and A; not a filter, output on option");
