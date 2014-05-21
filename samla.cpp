@@ -154,6 +154,7 @@ static double       opt_gwa_lowqual_quality = 30.0;
 static double       opt_gwa_lowqual_quality_ref = 20.0;
 static double       opt_gwa_mixed_quality = 30.0;
 static double       opt_gwa_mixed_quality_ref = 20.0;
+static bool         opt_gwa_force_consistency = true;
 
 #define apply_gwa_quality() \
     { \
@@ -715,6 +716,7 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
            o_gwa_window, o_gwa_quality, o_gwa_quality_ref, o_gwa_vqsr_quality, 
            o_gwa_lowqual_quality, o_gwa_lowqual_quality_ref, 
            o_gwa_mixed_quality, o_gwa_mixed_quality_ref,
+           o_gwa_force_consistency, o_gwa_no_force_consistency,
            o_gwa_enable_context_quality, o_gwa_disable_context_quality,
            o_gwa_vqsr_vqsr_fail, o_gwa_vqsr_vqsr_normal,
            o_gwa_lowqual_lowqual_fail, o_gwa_lowqual_lowqual_normal,
@@ -744,6 +746,8 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
         { o_gwa_lowqual_quality_ref, "--gwa-lowqual-quality-ref", SO_REQ_SEP },
         { o_gwa_mixed_quality,       "--gwa-mixed-quality",       SO_REQ_SEP },
         { o_gwa_mixed_quality_ref,   "--gwa-mixed-quality-ref",   SO_REQ_SEP },
+        { o_gwa_force_consistency,       "--gwa-force-consistency",       SO_NONE },
+        { o_gwa_no_force_consistency,    "--gwa-no-force-consistency",    SO_NONE },
         { o_gwa_enable_context_quality,  "--gwa-enable-context-quality",  SO_NONE },
         { o_gwa_disable_context_quality, "--gwa-disable-context-quality", SO_NONE },
         { o_gwa_vqsr_vqsr_fail,          "--gwa-vqsr-vqsr-fail",          SO_NONE },
@@ -797,6 +801,7 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
                     apply_gwa_quality();
                     opt_gwa_quality_ref = 20.0;
                     apply_gwa_quality_ref();
+                    opt_gwa_force_consistency = true;
                     opt_gwa_enable_context_quality = false;
                     opt_gwa_vqsr_vqsr_normal = false;
                     opt_gwa_mixed_normal = false;
@@ -839,6 +844,11 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
                 opt_gwa_mixed_quality = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_mixed_quality; break;
             case o_gwa_mixed_quality_ref:   
                 opt_gwa_mixed_quality_ref = args.OptionArg() ? atof(args.OptionArg()) : opt_gwa_mixed_quality_ref; break;
+
+            case o_gwa_force_consistency:
+                opt_gwa_force_consistency = true; break;
+            case o_gwa_no_force_consistency:
+                opt_gwa_force_consistency = false; break;
 
             case o_gwa_disable_context_quality:
                 opt_gwa_enable_context_quality = false; break;
@@ -981,6 +991,9 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << "     --gwa-mixed-quality FLOAT        minimum quality when combining VQSR with LowQual variants [" << opt_gwa_mixed_quality << "]" << endl;
     cerr << "     --gwa-mixed-quality-ref FLOAT    minimum quality to meet when combining VQSR with LowQual variants and call matches reference [" << opt_gwa_mixed_quality_ref << "]" << endl;
     cerr << endl;
+    cerr << "     --gwa-force-consistency          force potentially ambiguous case 4 to require G, W and A to agree on variant/no-variant to pass"; show_set(opt_gwa_force_consistency); cerr << endl;
+    cerr << "     --gwa-no-force-consistency       do not require G, W and A to agree with potentially ambiguous case 4"; show_set(! opt_gwa_force_consistency); cerr << endl;
+    cerr << endl;
     cerr << "     --gwa-enable-context-quality     enables usage of context quality"; show_set(opt_gwa_enable_context_quality); cerr << endl;
     cerr << "     --gwa-disable-context-quality    disables usage of context quality, qualities instead compared directly"; show_set(! opt_gwa_enable_context_quality); cerr << endl;
     cerr << "                                      NOTE: context quality is very experimental and may be incorrect, use at you rown risk" << endl;
@@ -1000,6 +1013,7 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << "     --method gwa" << endl;
     cerr << "     --gwa-quality 30" << endl;
     cerr << "     --gwa-quality-ref 20" << endl;
+    cerr << "     --gwa-force-consistency" << endl;
     cerr << "     --gwa-disable-context-quality" << endl;
     cerr << "     --gwa-vqsr-vqsr-fail" << endl;
     cerr << "     --gwa-mixed-fail" << endl;
@@ -1222,6 +1236,7 @@ prepareVcfHeader(VariantCallFile * header_vcf) {
         Headers.add(Header_FILTER, "LowQual_LowQual_Fail", true,  "Both G and W variants are LowQual-filtered, automatic failure");
     if (! opt_gwa_mixed_normal)
         Headers.add(Header_FILTER, "Mixed_Fail",           true,  "One of G and W variants are VQSR-filtered, other is LowQual-filtered, automatic failure");
+    Headers.add(Header_FILTER, "Inconsistent",             true,  "G, W and A do not agree as to variant/no-variant in potentially ambiguous cases");
     Headers.add(Header_FILTER, "culpritFail",              true,  "Combination of VQSR culprits incompatible for variant call");
     Headers.add(Header_FILTER, "culpritPass",              false, "Combination of VQSR culprits compatible for variant call; not a filter, output on option");
     Headers.add(Header_FILTER, "quality:",                 false, "Samla method 'gwa' set of quality and contextual quality values for G, W and A; not a filter, output on option");
@@ -1458,7 +1473,7 @@ bool
 is_GATK_variant_loose(Variant& v) {
     // appropriate for "new" files from GATK, not for our modified alleles which will have PASS/FAIL for all sites
     // differs from above since the variant might be filtered; used in case 5
-    return(v.filter != "." || v.alleles[1] != ".");
+    return(v.alleles[1] != ".");
 }
 
 bool
@@ -2284,6 +2299,10 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     double q_site = q_Gen + q_Wga;
     bool   passedQuality = (q_site >= opt_gwa_lowqual_quality);
     bool   passedQualityRef = (v_Gen.quality + v_Wga.quality >= opt_gwa_lowqual_quality_ref);
+    bool   all_not_variant = (not_GATK_variant(v_All) && not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga));
+    bool   all_is_variant = (is_GATK_variant_loose(v_All) && is_GATK_variant_loose(v_Gen) && is_GATK_variant_loose(v_Wga));
+    bool   G_W_not_variant = (not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga));
+    bool   G_W_is_variant = (is_GATK_variant_loose(v_Gen) && is_GATK_variant_loose(v_Wga));
     if (DEBUG(1)) {
         fprintf(stderr, "4 G quality: %9.4f  lookback: %9.4f  delta: %9.4f  q_Gen: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen, q_Gen);
         fprintf(stderr, "4 W quality: %9.4f  lookback: %9.4f  delta: %9.4f  q_Wga: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga, q_Wga);
@@ -2302,10 +2321,16 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case(v_ANS, "Qual_A");
         annotate_case_add_filter(v_ANS, "LowQual_LowQual_Fail");
 
-    } else if (not_GATK_variant(v_All) 
-            && not_GATK_variant(v_Gen) 
-            && not_GATK_variant(v_Wga) 
-            && passedQualityRef) {
+    } else if (opt_gwa_force_consistency && ! (all_not_variant || all_is_variant)) {
+
+        // fail all these cases
+        v_ANS = create_return_variant(v_All);
+        set_filter(v_ANS, "FAIL");
+        annotate_first_case(v_ANS, "GWA4_A");
+        annotate_case(v_ANS, "Qual_A");
+        annotate_case_add_filter(v_ANS, "Inconsistent");
+
+    } else if (all_not_variant && passedQualityRef) {
 
 #define annotate_4_passedQualityRef(__S__) \
             { \
@@ -2330,7 +2355,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case_add_full_filter(v_ANS, "noW");
         annotate_case_add_full_filter(v_ANS, "noA");
 
-    } else if (passedQuality) {
+    } else if (passedQuality && (G_W_not_variant || G_W_is_variant)) {
 
 #define annotate_4_passedQuality(__S__) \
             { \
@@ -2375,7 +2400,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
             } else {
 
-                if (! not_GATK_variant(v_Gen) && ! not_GATK_variant(v_Wga)) {
+                if (G_W_is_variant) {
 
                     // both are available, pick one of higher quality and make its quality the contextual quality
                     if (v_Gen.quality >= v_Wga.quality) {
@@ -2387,7 +2412,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                         set_filter(v_ANS, "PASS");
                         annotate_4_passedQuality("GWA4_W");
                     }
-                    v_ANS.quality = q_site;
+                    // v_ANS.quality = q_site;
                     annotate_case_add_full_filter(v_ANS, "snpG");
                     annotate_case_add_full_filter(v_ANS, "snpW");
                     annotate_case_add_full_filter(v_ANS, "noA");
@@ -2397,7 +2422,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                     // v_Gen has a variant
                     v_ANS = create_return_variant(v_Gen);
                     set_filter(v_ANS, "PASS");
-                    v_ANS.quality = q_site;
+                    // v_ANS.quality = q_site;
                     annotate_4_passedQuality("GWA4_G");
                     annotate_case_add_full_filter(v_ANS, "snpG");
                     annotate_case_add_full_filter(v_ANS, "noW");
@@ -2408,7 +2433,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                     // v_Wga has a variant
                     v_ANS = create_return_variant(v_Wga);
                     set_filter(v_ANS, "PASS");
-                    v_ANS.quality = q_site;
+                    // v_ANS.quality = q_site;
                     annotate_4_passedQuality("GWA4_W");
                     annotate_case_add_full_filter(v_ANS, "snpW");
                     annotate_case_add_full_filter(v_ANS, "noG");
@@ -2447,7 +2472,8 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W do not contain a variant, use the one of higher quality
             // if both contains a variant, we have to fail the site
 
-            if (not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga)) {
+            if (G_W_not_variant) {
+
                 // both non-variants are available, pick one of higher quality and make its quality the contextual quality
                 if (v_Gen.quality >= v_Wga.quality) {
                     v_ANS = create_return_variant(v_Gen);
@@ -2469,7 +2495,7 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 // v_Gen is non-variant, assuming that v_Wga is a (mistaken) variant
                 v_ANS = create_return_variant(v_Gen);
                 set_filter(v_ANS, "PASS");
-                v_ANS.quality = q_site;
+                // v_ANS.quality = q_site;
                 annotate_4_passedQualityRef("GWA4_G");
                 annotate_case_add_full_filter(v_ANS, "snpW");
                 annotate_case_add_full_filter(v_ANS, "noG");
@@ -2479,17 +2505,17 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 // v_Wga is non-variant, assuming that v_Gen is a (mistaken) variant
                 v_ANS = create_return_variant(v_Wga);
                 set_filter(v_ANS, "PASS");
-                v_ANS.quality = q_site;
+                // v_ANS.quality = q_site;
                 annotate_4_passedQualityRef("GWA4_W");
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
-            } else if (! not_GATK_variant(v_Gen) && ! not_GATK_variant(v_Gen)) {
+            } else if (G_W_is_variant) {
 
                 // only variants available, fail the site
                 v_ANS = create_return_variant(v_All);
                 set_filter(v_ANS, "FAIL");
-                v_ANS.quality = q_site;
+                // v_ANS.quality = q_site;
                 annotate_4_passedQualityRef("GWA4_A");
                 annotate_case_add_full_filter(v_ANS, "snpA");
                 annotate_case_add_full_filter(v_ANS, "snpG");
@@ -2518,9 +2544,9 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         v_ANS = create_return_variant(v_All);
         set_filter(v_ANS, "FAIL");
         annotate_first_case(v_ANS, "GWA4_A");
-        annotate_case_add_full_filter(v_ANS, (v_All.filter == "." && v_All.alleles[1] == ".") ? "noA" : "snpA");
-        annotate_case_add_full_filter(v_ANS, (v_Gen.filter == "." && v_Gen.alleles[1] == ".") ? "noG" : "snpG");
-        annotate_case_add_full_filter(v_ANS, (v_Wga.filter == "." && v_Wga.alleles[1] == ".") ? "noW" : "snpW");
+        annotate_case_add_full_filter(v_ANS, is_GATK_variant_loose(v_All) ? "snpA" : "noA");
+        annotate_case_add_full_filter(v_ANS, is_GATK_variant_loose(v_Gen) ? "snpG" : "noG");
+        annotate_case_add_full_filter(v_ANS, is_GATK_variant_loose(v_Wga) ? "snpW" : "noW");
         v_ANS.quality = q_site;
         if (opt_gwa_enable_context_quality) {
             annotate_failed_ContextQuality(v_ANS, opt_gwa_lowqual_quality);
@@ -2560,6 +2586,10 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     double q_site = q_Gen + q_Wga;
     bool   passedQuality = (q_site >= opt_gwa_mixed_quality);
     bool   passedQualityRef = (v_Gen.quality + v_Wga.quality >= opt_gwa_mixed_quality_ref);
+    bool   all_not_variant = (not_GATK_variant(v_All) && not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga));
+    bool   all_is_variant = (is_GATK_variant_loose(v_All) && is_GATK_variant_loose(v_Gen) && is_GATK_variant_loose(v_Wga));
+    bool   G_W_not_variant = (not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga));
+    bool   G_W_is_variant = (is_GATK_variant_loose(v_Gen) && is_GATK_variant_loose(v_Wga));
     if (DEBUG(1)) {
         fprintf(stderr, "5 G quality: %9.4f  lookback: %9.4f  delta: %9.4f  q_Gen: %9.4f\n", v_Gen.quality, qualwindow_Gen.mean(), qdelta_Gen, q_Gen);
         fprintf(stderr, "5 W quality: %9.4f  lookback: %9.4f  delta: %9.4f  q_Wga: %9.4f\n", v_Wga.quality, qualwindow_Wga.mean(), qdelta_Wga, q_Wga);
@@ -2578,6 +2608,15 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_first_case(v_ANS, "GWA5_A");
         annotate_case(v_ANS, "Qual_A");
         annotate_case_add_filter(v_ANS, "Mixed_Fail");
+
+    } else if (opt_gwa_force_consistency && ! (all_not_variant || all_is_variant)) {
+
+        // fail all these cases
+        v_ANS = create_return_variant(v_All);
+        set_filter(v_ANS, "FAIL");
+        annotate_first_case(v_ANS, "GWA5_A");
+        annotate_case(v_ANS, "Qual_A");
+        annotate_case_add_filter(v_ANS, "Inconsistent");
 
     } else if (vqsr_culprit != culprit_fail && passedQuality) {
 
@@ -2613,7 +2652,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W contain a variant, use the one of higher quality
             // if neither contains a variant, we have to fail the site
 
-            if (is_GATK_variant_loose(v_Gen) && is_GATK_variant_loose(v_Wga)) {
+            if (G_W_is_variant) {
 
                 // both are available, pick one of higher quality and adjust its quality
                 if (v_Gen.quality >= v_Wga.quality) {
@@ -2651,7 +2690,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "noG");
                 annotate_case_add_full_filter(v_ANS, "snpW");
 
-            } else if (not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga)) {
+            } else if (G_W_not_variant) {
 
                 // no variant is available, fail the site
                 v_ANS = create_return_variant(v_All);
@@ -2708,7 +2747,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
             // if G or W do not contain a variant, use the one of higher quality
             // if both contains a variant, we have to fail the site
 
-            if (not_GATK_variant(v_Gen) && not_GATK_variant(v_Wga)) {
+            if (G_W_not_variant) {
                 // both non-variants are available, pick one of higher quality and make its quality the contextual quality
                 if (v_Gen.quality >= v_Wga.quality) {
                     v_ANS = create_return_variant(v_Gen);
@@ -2745,7 +2784,7 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
-            } else if (is_GATK_variant_loose(v_Gen) && is_GATK_variant_loose(v_Gen)) {
+            } else if (G_W_is_variant) {
 
                 // only variants available, fail the site
                 v_ANS = create_return_variant(v_All);
@@ -2773,9 +2812,9 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         v_ANS = create_return_variant(v_All);
         set_filter(v_ANS, "FAIL");
         annotate_first_case(v_ANS, "GWA5_A");
-        annotate_case_add_full_filter(v_ANS, (v_All.filter == "." && v_All.alleles[1] == ".") ? "noA" : "snpA");
-        annotate_case_add_full_filter(v_ANS, (v_Gen.filter == "." && v_Gen.alleles[1] == ".") ? "noG" : "snpG");
-        annotate_case_add_full_filter(v_ANS, (v_Wga.filter == "." && v_Wga.alleles[1] == ".") ? "noW" : "snpW");
+        annotate_case_add_full_filter(v_ANS, is_GATK_variant_loose(v_All) ? "snpA" : "noA");
+        annotate_case_add_full_filter(v_ANS, is_GATK_variant_loose(v_Gen) ? "snpG" : "noG");
+        annotate_case_add_full_filter(v_ANS, is_GATK_variant_loose(v_Wga) ? "snpW" : "noW");
         v_ANS.quality = q_site;
         if (opt_gwa_enable_context_quality) {
             annotate_failed_ContextQuality(v_ANS, opt_gwa_mixed_quality);
