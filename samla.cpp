@@ -2866,28 +2866,29 @@ method_gwa_case6_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 }
 
 
-// -------- 7_G  No variant in v_Gen, filtered variant (LowQual) in v_Wga.  Emit no variant.
+// -------- 7_G  No variant in v_Gen, filtered site (LowQual) in v_Wga.  Emit no variant.
 
 
 Variant
 method_gwa_case7_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 7_G method_gwa_case7_G()" << endl;
     Variant v_ANS;
-    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+    if (v_All.info["VariantType"][0] == "NO_VARIATION" && not_GATK_variant(v_Wga)) {
         v_ANS = create_return_variant(v_All);
+        v_ANS.quality = v_Gen.quality + v_Wga.quality;
         annotate_first_case(v_ANS, "GWA7_G_A");
-        annotate_case(v_ANS, "Qual_A");
+        annotate_case(v_ANS, "Qual_G+W");
         annotate_case_add_full_filter(v_ANS, "noA");
+        annotate_case_add_full_filter(v_ANS, "noG");
+        annotate_case_add_full_filter(v_ANS, "noW");
     } else {
+        // regardless of whatever reason we failed above, we only go with v_Gen and its quality here
         v_ANS = create_return_variant(v_Gen);
         annotate_first_case(v_ANS, "GWA7_G_G");
         annotate_case(v_ANS, "Qual_G");
+        annotate_case_add_full_filter(v_ANS, (not_GATK_variant(v_All) ? "noA" : "snpA"));
         annotate_case_add_full_filter(v_ANS, "noG");
-        annotate_case_add_full_filter(v_ANS, "snpA");
-        // what we do with the quality depends on what is in the LowQual variant
-        if (not_GATK_variant(v_Wga)) {
-            v_ANS.quality += v_Wga.quality;
-        }
+        annotate_case_add_full_filter(v_ANS, (not_GATK_variant(v_Wga) ? "noW" : "snpW"));
         if (DEBUG(2)) {
             cerr << "**7_G** v_Gen is '.' with v_Wga LowQual but v_All *is* a variant" << endl;
             cerr << "**7_G** G " << v_Gen << endl << "**7_G** W " << v_Wga << endl << "**7_G** A " << v_All << endl;
@@ -2904,28 +2905,28 @@ method_gwa_case7_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 }
 
 
-// -------- 7_W  Filtered variant (LowQual) in v_Gen, no variant in v_Wga.  Emit no variant.
+// -------- 7_W  Filtered site (LowQual) in v_Gen, no variant in v_Wga.  Emit no variant.
 
 
 Variant
 method_gwa_case7_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 7_W method_gwa_case7_W()" << endl;
     Variant v_ANS;
-    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+    if (v_All.info["VariantType"][0] == "NO_VARIATION" && not_GATK_variant(v_Gen)) {
         v_ANS = create_return_variant(v_All);
         annotate_first_case(v_ANS, "GWA7_W_A");
-        annotate_case(v_ANS, "Qual_A");
+        annotate_case(v_ANS, "Qual_G+W");
         annotate_case_add_full_filter(v_ANS, "noA");
+        annotate_case_add_full_filter(v_ANS, "noG");
+        annotate_case_add_full_filter(v_ANS, "noW");
     } else {
+        // regardless of whatever reason we failed above, we only go with v_Wga and its quality here
         v_ANS = create_return_variant(v_Wga);
         annotate_first_case(v_ANS, "GWA7_W_W");
         annotate_case(v_ANS, "Qual_W");
+        annotate_case_add_full_filter(v_ANS, (not_GATK_variant(v_All) ? "noA" : "snpA"));
+        annotate_case_add_full_filter(v_ANS, (not_GATK_variant(v_Wga) ? "noG" : "snpG"));
         annotate_case_add_full_filter(v_ANS, "noW");
-        annotate_case_add_full_filter(v_ANS, "snpA");
-        // what we do with the quality depends on what is in the LowQual variant
-        if (not_GATK_variant(v_Gen)) {
-            v_ANS.quality += v_Gen.quality;
-        }
         if (DEBUG(2)) {
             cerr << "**7_W** v_Gen is LowQual with v_Wga '.' but v_All *is* a variant" << endl;
             cerr << "**7_W** G " << v_Gen << endl << "**7_W** W " << v_Wga << endl << "**7_W** A " << v_All << endl;
