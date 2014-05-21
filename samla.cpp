@@ -2798,28 +2798,23 @@ method_gwa_case5(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 }
 
 
-// -------- 6_G  No variant in v_Gen, filtered variant (VQSR) in v_Wga.  Emit no variant, fall back to ref.
+// -------- 6_G  No variant in v_Gen, filtered variant (VQSR) in v_Wga.  Emit no variant, call ref from v_Gen
 
 
 Variant
 method_gwa_case6_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 6_G method_gwa_case6_G()" << endl;
     Variant v_ANS;
-    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
-        v_ANS = create_return_variant(v_All);
-        annotate_first_case(v_ANS, "GWA6_G_A");
-        annotate_case(v_ANS, "Qual_A");
-        annotate_case_add_full_filter(v_ANS, "noA");
-    } else {
-        v_ANS = create_return_variant(v_Gen);
-        annotate_first_case(v_ANS, "GWA6_G_G");
-        annotate_case(v_ANS, "Qual_G");
-        annotate_case_add_full_filter(v_ANS, "noG");
-        annotate_case_add_full_filter(v_ANS, "snpA");
-        if (DEBUG(2)) {
-            cerr << "**6_G** v_Gen is '.' with v_Wga LowQual but v_All *is* a variant" << endl;
-            cerr << "**6_G** G " << v_Gen << endl << "**6_G** W " << v_Wga << endl << "**6_G** A " << v_All << endl;
-        }
+    v_ANS = create_return_variant(v_Gen);
+    annotate_first_case(v_ANS, "GWA6_G");
+    annotate_case(v_ANS, "Qual_G");
+    annotate_case_add_full_filter(v_ANS, (not_GATK_variant(v_All) ? "noA" : "snpA"));
+    annotate_case_add_full_filter(v_ANS, "noG");
+    annotate_case_add_full_filter(v_ANS, "snpW");
+    annotate_case_add_full_filter(v_ANS, "vqsrW");
+    if (DEBUG(2)) {
+        cerr << "**6_G** v_Gen is '.' with v_Wga LowQual but v_All *is* a variant" << endl;
+        cerr << "**6_G** G " << v_Gen << endl << "**6_G** W " << v_Wga << endl << "**6_G** A " << v_All << endl;
     }
     if (v_ANS.quality >= opt_gwa_quality_ref) {
         set_first_filter(v_ANS, "PASS");
@@ -2839,21 +2834,16 @@ Variant
 method_gwa_case6_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 6_W method_gwa_case6_W()" << endl;
     Variant v_ANS;
-    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
-        v_ANS = create_return_variant(v_All);
-        annotate_first_case(v_ANS, "GWA6_W_A");
-        annotate_case(v_ANS, "Qual_A");
-        annotate_case_add_full_filter(v_ANS, "noA");
-    } else {
-        v_ANS = create_return_variant(v_Wga);
-        annotate_first_case(v_ANS, "GWA6_W_W");
-        annotate_case(v_ANS, "Qual_W");
-        annotate_case_add_full_filter(v_ANS, "noW");
-        annotate_case_add_full_filter(v_ANS, "snpA");
-        if (DEBUG(2)) {
-            cerr << "**6_W** v_Gen is LowQual with v_Wga '.' but v_All *is* a variant" << endl;
-            cerr << "**6_W** G " << v_Gen << endl << "**6_W** W " << v_Wga << endl << "**6_W** A " << v_All << endl;
-        }
+    v_ANS = create_return_variant(v_Wga);
+    annotate_first_case(v_ANS, "GWA6_W");
+    annotate_case(v_ANS, "Qual_W");
+    annotate_case_add_full_filter(v_ANS, (not_GATK_variant(v_All) ? "noA" : "snpA"));
+    annotate_case_add_full_filter(v_ANS, "snpG");
+    annotate_case_add_full_filter(v_ANS, "noW");
+    annotate_case_add_full_filter(v_ANS, "vqsrG");
+    if (DEBUG(2)) {
+        cerr << "**6_W** v_Gen is LowQual with v_Wga '.' but v_All *is* a variant" << endl;
+        cerr << "**6_W** G " << v_Gen << endl << "**6_W** W " << v_Wga << endl << "**6_W** A " << v_All << endl;
     }
     if (v_ANS.quality >= opt_gwa_quality_ref) {
         set_first_filter(v_ANS, "PASS");
