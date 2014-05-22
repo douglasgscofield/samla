@@ -2155,8 +2155,8 @@ method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     // if VQSR.  We don't know if we pass until we have assembled all the
     // qualities.
     if (DEBUG(2)) cout << "*** case 2_W method_gwa_case2_W()" << endl;
-    double qdelta = (v_Wga.quality - qualwindow_Wga.mean());
-    double q = (v_Wga.filter == "LowQual" && opt_gwa_enable_context_quality) ? abs(qdelta) : v_Wga.quality;
+    double qdelta = (v_Gen.quality - qualwindow_Gen.mean());
+    double q = (v_Gen.filter == "LowQual" && opt_gwa_enable_context_quality) ? abs(qdelta) : v_Gen.quality;
     Variant v_ANS;
     if (v_All.info["VariantType"][0] == "NO_VARIATION") {
         v_ANS = create_return_variant(v_Wga);
@@ -2497,7 +2497,6 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 // v_Gen is non-variant, assuming that v_Wga is a (mistaken) variant
                 v_ANS = create_return_variant(v_Gen);
                 set_filter(v_ANS, "PASS");
-                // v_ANS.quality = q_site;
                 annotate_4_passedQualityRef("GWA4_G");
                 annotate_case_add_full_filter(v_ANS, "snpW");
                 annotate_case_add_full_filter(v_ANS, "noG");
@@ -2507,21 +2506,28 @@ method_gwa_case4(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
                 // v_Wga is non-variant, assuming that v_Gen is a (mistaken) variant
                 v_ANS = create_return_variant(v_Wga);
                 set_filter(v_ANS, "PASS");
-                // v_ANS.quality = q_site;
                 annotate_4_passedQualityRef("GWA4_W");
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "noW");
 
             } else if (G_W_is_variant) {
 
-                // only variants available, fail the site
+                // only variants available, it cannot be reference, fail the site
                 v_ANS = create_return_variant(v_All);
                 set_filter(v_ANS, "FAIL");
-                // v_ANS.quality = q_site;
-                annotate_4_passedQualityRef("GWA4_A");
+                v_ANS.quality = q_site;
+                annotate_first_case(v_ANS, "GWA4_A");
+                if (opt_gwa_enable_context_quality) {
+                    annotate_failed_ContextQuality(v_ANS, opt_gwa_lowqual_quality);
+                    annotate_case(v_ANS, "Qual_GContext+WContext");
+                } else {
+                    annotate_failed_Quality(v_ANS, opt_gwa_lowqual_quality);
+                    annotate_case(v_ANS, "Qual_G+W");
+                }
                 annotate_case_add_full_filter(v_ANS, "snpA");
                 annotate_case_add_full_filter(v_ANS, "snpG");
                 annotate_case_add_full_filter(v_ANS, "snpW");
+
 
             } else {
 
@@ -2945,6 +2951,7 @@ method_gwa_case7_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     Variant v_ANS;
     if (v_All.info["VariantType"][0] == "NO_VARIATION" && not_GATK_variant(v_Gen)) {
         v_ANS = create_return_variant(v_All);
+        v_ANS.quality = v_Gen.quality + v_Wga.quality,
         annotate_first_case(v_ANS, "GWA7_W_A");
         annotate_case(v_ANS, "Qual_G+W");
         annotate_case_add_full_filter(v_ANS, "noA");
