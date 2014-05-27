@@ -1474,7 +1474,7 @@ is_GATK_variant(Variant& v) {
 bool
 is_GATK_variant_loose(Variant& v) {
     // appropriate for "new" files from GATK, not for our modified alleles which will have PASS/FAIL for all sites
-    // differs from above since the variant might be filtered; used in case 5
+    // differs from above since the variant might be filtered
     return(v.alleles[1] != ".");
 }
 
@@ -2097,14 +2097,14 @@ method_gwa_case1(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 Variant
 method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
-    // Combine strength from both, using straight quality for the variant and
-    // contextual quality for the filtered one if LowQual and straight quality
-    // We don't know if we pass until we have assembled all the qualities.
+    // Combine strength from both if the filtered SNP is a variant, using
+    // straight quality for the variant and contextual quality for the filtered
+    // one if LowQual and a variant.  We don't know if we PASS until we have
+    // all the qualities.
     if (DEBUG(2)) cout << "*** case 2_G method_gwa_case2_G()" << endl;
-    double qdelta = (v_Wga.quality - qualwindow_Wga.mean());
-    double q = (v_Wga.filter == "LowQual" && opt_gwa_enable_context_quality) ? abs(qdelta) : v_Wga.quality;
+    bool W_LQ_not_variant = (is_LowQual(v_Wga) && not_GATK_variant(v_Wga));
     Variant v_ANS;
-    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+    if (v_All.info["VariantType"][0] == "NO_VARIATION" || W_LQ_not_variant) {
         v_ANS = create_return_variant(v_Gen);
         annotate_first_case(v_ANS, "GWA2_G_G");
         annotate_case_add_full_filter(v_ANS, "snpG");
@@ -2119,16 +2119,23 @@ method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case_add_full_filter(v_ANS, "snpG");
         annotate_case_add_full_filter(v_ANS, "snpA");
     }
-    v_ANS.quality = v_Gen.quality + q;
-    if (v_Wga.filter.substr(0, 4) == "VQSR") {
+    if (is_VQSR(v_Wga) || ! W_LQ_not_variant) {
+        v_ANS.quality = v_Gen.quality + v_Wga.quality;
         annotate_case(v_ANS, "Qual_G+W");
-        annotate_case_add_full_filter(v_ANS, "vqsrW");
-    } else if (v_Wga.filter == "LowQual") {
+        annotate_case_add_full_filter(v_ANS, "snpW");
+        if (is_VQSR(v_Wga)) {
+            annotate_case_add_full_filter(v_ANS, "vqsrW");
+        } else {
+            annotate_case_add_full_filter(v_ANS, "lowqualW");
+        }
+    } else if (W_LQ_not_variant) { // LowQual and call to reference
         if (opt_gwa_enable_context_quality) {
+            v_ANS.quality = v_Gen.quality + (v_Wga.quality - qualwindow_Wga.mean());
             annotate_case(v_ANS, "Qual_G+WContext");
         } else {
-            annotate_case(v_ANS, "Qual_G+W");
+            annotate_case(v_ANS, "Qual_G");
         }
+        annotate_case_add_full_filter(v_ANS, "noW");
         annotate_case_add_full_filter(v_ANS, "lowqualW");
     } else {
         cerr << "**2_G* unhandled v_Wga.filter case" << endl; exit(1);
@@ -2150,22 +2157,21 @@ method_gwa_case2_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 Variant
 method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 
-    // Combine strength from both, using straight quality for the variant and
-    // contextual quality for the filtered one if LowQual and straight quality
-    // if VQSR.  We don't know if we pass until we have assembled all the
-    // qualities.
+    // Combine strength from both if the filtered SNP is a variant, using
+    // straight quality for the variant and contextual quality for the filtered
+    // one if LowQual and a variant.  We don't know if we PASS until we have
+    // assembled all the qualities.
     if (DEBUG(2)) cout << "*** case 2_W method_gwa_case2_W()" << endl;
-    double qdelta = (v_Gen.quality - qualwindow_Gen.mean());
-    double q = (v_Gen.filter == "LowQual" && opt_gwa_enable_context_quality) ? abs(qdelta) : v_Gen.quality;
+    bool G_LQ_not_variant = (is_LowQual(v_Gen) && not_GATK_variant(v_Gen));
     Variant v_ANS;
-    if (v_All.info["VariantType"][0] == "NO_VARIATION") {
+    if (v_All.info["VariantType"][0] == "NO_VARIATION" || G_LQ_not_variant) {
         v_ANS = create_return_variant(v_Wga);
         annotate_first_case(v_ANS, "GWA2_W_W");
         annotate_case_add_full_filter(v_ANS, "snpW");
         annotate_case_add_full_filter(v_ANS, "noA");
         if (DEBUG(2)) {
-            cerr << "**2_W** v_Wga is PASS with other filtered but v_All is not a variant" << endl;
-            cerr << "**2_W** G " << v_Gen << endl << "**2_W** W " << v_Wga << endl << "**2_W** A " << v_All << endl;
+            cerr << "**2_W* v_Wga is PASS with other filtered but v_All is not a variant" << endl;
+            cerr << "**2_W* G " << v_Gen << endl << "**2_G* W " << v_Wga << endl << "**2_G* A " << v_All << endl;
         }
     } else {
         v_ANS = create_return_variant(v_All);
@@ -2173,16 +2179,23 @@ method_gwa_case2_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
         annotate_case_add_full_filter(v_ANS, "snpW");
         annotate_case_add_full_filter(v_ANS, "snpA");
     }
-    v_ANS.quality = v_Wga.quality + q;
-    if (v_Gen.filter.substr(0, 4) == "VQSR") {
+    if (is_VQSR(v_Gen) || ! G_LQ_not_variant) {
+        v_ANS.quality = v_Wga.quality + v_Gen.quality;
         annotate_case(v_ANS, "Qual_W+G");
-        annotate_case_add_full_filter(v_ANS, "vqsrG");
-    } else if (v_Gen.filter == "LowQual") {
+        annotate_case_add_full_filter(v_ANS, "snpG");
+        if (is_VQSR(v_Gen)) {
+            annotate_case_add_full_filter(v_ANS, "vqsrG");
+        } else {
+            annotate_case_add_full_filter(v_ANS, "lowqualG");
+        }
+    } else if (G_LQ_not_variant) { // LowQual and call to reference
         if (opt_gwa_enable_context_quality) {
+            v_ANS.quality = v_Wga.quality + (v_Gen.quality - qualwindow_Gen.mean());
             annotate_case(v_ANS, "Qual_W+GContext");
         } else {
-            annotate_case(v_ANS, "Qual_W+G");
+            annotate_case(v_ANS, "Qual_W");
         }
+        annotate_case_add_full_filter(v_ANS, "noG");
         annotate_case_add_full_filter(v_ANS, "lowqualG");
     } else {
         cerr << "**2_W* unhandled v_Gen.filter case" << endl; exit(1);
