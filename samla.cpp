@@ -995,8 +995,8 @@ exitusage(const string& msg, const string& msg2, const string& msg3, const strin
     cerr << "     --gwa-force-consistency          require G, W and A to agree on variant/no-variant for potentially ambiguous cases 4 and 5"; show_set(opt_gwa_force_consistency); cerr << endl;
     cerr << "     --gwa-no-force-consistency       do not require G, W and A to agree on variant/no-variant for potentially ambiguous cases 4 and 5"; show_set(! opt_gwa_force_consistency); cerr << endl;
     cerr << endl;
-    cerr << "     --gwa-enable-context-quality     enables usage of context quality"; show_set(opt_gwa_enable_context_quality); cerr << endl;
     cerr << "     --gwa-disable-context-quality    disables usage of context quality, qualities instead compared directly"; show_set(! opt_gwa_enable_context_quality); cerr << endl;
+    cerr << "     --gwa-enable-context-quality     enables usage of context quality"; show_set(opt_gwa_enable_context_quality); cerr << endl;
     cerr << "                                      NOTE: context quality is very experimental and may be incorrect, use at you rown risk" << endl;
     cerr << endl;
     cerr << "     --gwa-vqsr-vqsr-fail             mark as FAIL all cases having both genomic and WGA VQSR-filtered variants"; show_set(! opt_gwa_vqsr_vqsr_normal); cerr << endl;
