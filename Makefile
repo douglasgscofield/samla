@@ -12,6 +12,10 @@ D_FLAG=     -D_WITH_DEBUG -ggdb -g3 -fvar-tracking-assignments -fno-inline -fno-
 P_FLAG=         
 CXXFLAGS=	-I../vcflib -Wall -D_FILE_OFFSET_BITS=64 $(O_FLAG) $(D_FLAG) $(P_FLAG)
 
+RELEASE_O_FLAG = -O2
+RELEASE_D_FLAG = -D_WITH_DEBUG
+RELEASE_P_FLAG =
+
 PROG=		samla
 
 LIBS=		-lm -lz
@@ -78,13 +82,13 @@ profile: samla-profile
 samla-profile:
 
 release: samla-release
-	$(MAKE) O_FLAG=-O2 D_FLAG=
+	$(MAKE) O_FLAG=$(RELEASE_O_FLAG) D_FLAG=$(RELEASE_D_FLAG) P_FLAG=$(RELEASE_P_FLAG)
 	mv samla $^
 
 samla-release:
 
 release-profile: samla-release-profile
-	$(MAKE) O_FLAG=-O2 D_FLAG= P_FLAG=-pg
+	$(MAKE) O_FLAG=-O2 D_FLAG="-D_WITH_DEBUG" P_FLAG=-pg
 	mv samla $^
 
 samla-release-profile:
