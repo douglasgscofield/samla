@@ -9,29 +9,56 @@
 // that is changed to:
 //   - use const a bit more often especially on const accessors
 //   - add Vcf.filename field
-//   - TODO rewrite operator<< to not modify fields of Variant
+//   - TODO rewrite operator<< to not modify fields of Variant (needs .at())
 //   - TODO add method Variant.fixup to make modifications to Variant that
-//     are currently done by operator<<
+//     are currently done by operator<< [??]
 //   - TODO handle missing data on output like the VCF presented it on input
 //     e.g. if VCF had genotype ./. output this instead of .
 //
 
-// TODO Must study consistency of context quality
-// TODO Standardise filter and INFO fields
-// filters must be separated by semicolons, and values do not contain semicolons, 
-// commas, whitespace, '=', with comma separating multiple values for a key
-// INFO fields must be key=val[,val] with key-value groups separated by semicolons
-// key is "Samla<key>"
-// things through set_filter() and annotate_filter() are on filter;filter;filter
-// set_filter() adds to .filter and to .info["SamlaFilter"]
-// annotate_filter() adds to .info["SamlaFilter"] and to .filter on option
-// annotate_case() adds the case to "SamlaCase"
-// annotate_first_case() adds the case to the first element of "SamlaCase" and to .filter of opt_full_filter_annotate
-// annotate_case_add_filter() adds the case to the first element of "SamlaCase" and calls annotate_filter()
-// annotate_case_add_full_filter() adds the case to the first element of "SamlaCase" and calls annotate_filter() if opt_full_filter_annotate
+
+#define NAME "samla"
+#include "version.h"
+
+// CHANGELOG
 //
-// things set through v_ANS.info["..."].push_back("...") as INFO: SamlaFilter=filter,filter,filter
-// case results are INFO: SamlaCase=val,val,val
+// 0.1.1 : Updating case 8 with --gwa-case8-emit-all, to issue the A call instead of
+//         either G or W, with the goal of reducing bias when W is particularly bad;
+//         PASS/FAIL still checked as before but now A might be ref
+//
+// 0.1.0 : First release, for usage in KSP
+//
+// 0.0.5 : Improving consistency following Carina S's extensive testing
+//
+// 0.0.4 : Cleaning up of produced VCF
+//
+// 0.0.3 : Reimplementation of cases 3 4 5
+//
+// 0.0.2 : First implementation of 'gwa'
+//
+// 0.0.1 : Implement and lightly test VcfStripmine class
+
+// TODO
+// --- Deal with indels in some way, for now we completely ignore them
+// --- For gwa method, turn lookback window into surrounding window.  This
+//     is a bit tricky as it will involve caching
+// --- Return Variants from VcfStripmine in order of VCFs
+// --- Must study consistency of context quality
+// --- Document the handling of filters and annotations... here is a start.
+//
+//     filters must be separated by semicolons, and values do not contain semicolons,
+//     commas, whitespace, '=', with comma separating multiple values for a key
+//     INFO fields must be key=val[,val] with key-value groups separated by semicolons
+//     key is "Samla<key>"
+//     things through set_filter() and annotate_filter() are on filter;filter;filter
+//     set_filter() adds to .filter and to .info["SamlaFilter"]
+//     annotate_filter() adds to .info["SamlaFilter"] and to .filter on option
+//     annotate_case() adds the case to "SamlaCase"
+//     annotate_first_case() adds the case to the first element of "SamlaCase" and to .filter of opt_full_filter_annotate
+//     annotate_case_add_filter() adds the case to the first element of "SamlaCase" and calls annotate_filter()
+//     annotate_case_add_full_filter() adds the case to the first element of "SamlaCase" and calls annotate_filter() if opt_full_filter_annotate
+//     things set through v_ANS.info["..."].push_back("...") as INFO: SamlaFilter=filter,filter,filter
+//     case results are INFO: SamlaCase=val,val,val
 //
 // VCF annotations added by Samla:
 //
@@ -65,40 +92,8 @@
 // VQSLOD=
 // NEGATIVE_TRAIN_SITE
 // POSITIVE_TRAIN_SITE
-// what else?
-// do we ever need to change VariantType?
 //
-// TODO (working on this): if we pass, just use annotate_case()
-//                         if we fail, use annotate_case_add_filter()
-
-#define NAME "samla"
-#include "version.h"
-
-// CHANGELOG
-//
-// 0.0.4 : Cleaning up of produced VCF
-//
-// 0.0.3 : Reimplementation of cases 3 4 5
-//
-// 0.0.2 : First implementation of 'gwa'
-//
-// 0.0.1 : Implement and lightly test VcfStripmine class
-
-// TODO
-// --- Deal with indels in some way
-// --- Generalise a method for determining whether variant is no-variant,
-//     to bypass gwa reliance on GATK's VariantType=NO_VARIATION.  Perhaps
-//     derive a class from Variant adding a method/field to do each variant?
-// --- Once the above is done, generalise gwa to not rely on GATK's 
-//     VariantType=NO_VARIATION
-// --- For gwa method, what do we need to modify in the INFO field?  Perhaps
-//     remove VariantType=NO_VARIATION for accepted variants is one...
-// --- For gwa method, produce headers on output
-// --- For gwa method, add appropriate entries to headers
-// --- For gwa method, ensure INFO is VCF 4.1-compliant
-// --- For gwa method, turn lookback window into surrounding window.  This
-//     is a bit tricky as it will involve caching
-// --- Return Variants from VcfStripmine in order of VCFs
+// do we ever need to change VariantType?  No, we are not recalling any variants
 //
 
 // #define NDEBUG  // uncomment to remove assert() code
@@ -171,6 +166,7 @@ static bool         opt_gwa_enable_context_quality = false;
 static bool         opt_gwa_vqsr_vqsr_normal = false;
 static bool         opt_gwa_lowqual_lowqual_normal = true;
 static bool         opt_gwa_mixed_normal = false;
+static bool         opt_gwa_case8_emit_all = true;
 static bool         opt_filter_annotate = false;
 static bool         opt_full_filter_annotate = false;
 static bool         opt_stdio = false;
@@ -701,6 +697,7 @@ generate_full_command_line_string() {
     ss << " " << (opt_gwa_vqsr_vqsr_normal ? "--gwa-vqsr-vqsr-normal" : "--gwa-vqsr-vqsr-fail");
     ss << " " << (opt_gwa_lowqual_lowqual_normal ? "--gwa-lowqual-lowqual-normal" : "--gwa-lowqual-lowqual-fail");
     ss << " " << (opt_gwa_mixed_normal ? "--gwa-mixed-normal" : "--gwa-mixed-fail");
+    ss << " " << (opt_gwa_case8_emit_all ? "--gwa-case8-emit-all" : "--gwa-case8-no-emit-all");
     ss << " " << "--output" << " " << output_file;
     ss << " " << "--debug" << " " << opt_debug;
     ss << " " << "--progress" << " " << opt_progress;
@@ -722,6 +719,7 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
            o_gwa_vqsr_vqsr_fail, o_gwa_vqsr_vqsr_normal,
            o_gwa_lowqual_lowqual_fail, o_gwa_lowqual_lowqual_normal,
            o_gwa_mixed_fail, o_gwa_mixed_normal,
+           o_gwa_case8_emit_all, o_gwa_case8_no_emit_all,
            o_output, o_stdio, o_debug, o_progress, o_help };
 
     CSimpleOpt::SOption samla_options[] = {
@@ -759,6 +757,8 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
         { o_gwa_mixed_normal,            "--gwa-mixed-normal",            SO_NONE },
         { o_gwa_mixed_fail,              "--gwa-vqsr-lowqual-fail",       SO_NONE },
         { o_gwa_mixed_normal,            "--gwa-vqsr-lowqual-normal",     SO_NONE },
+        { o_gwa_case8_emit_all,          "--gwa-case8-emit-all",          SO_NONE },
+        { o_gwa_case8_no_emit_all,       "--gwa-case8-no-emit-all",       SO_NONE },
 
         { o_output,      "-o",            SO_REQ_SEP },  // output file
         { o_output,      "--output",      SO_REQ_SEP },
@@ -806,6 +806,7 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
                     opt_gwa_enable_context_quality = false;
                     opt_gwa_vqsr_vqsr_normal = false;
                     opt_gwa_mixed_normal = false;
+                    opt_gwa_case8_emit_all = true;
                 }
                 break;
             case o_vcf_genomic:   
@@ -868,6 +869,10 @@ processCommandLine(int argc, char* argv[], VcfStripmine& stripmine) {
                 opt_gwa_mixed_normal = false; break;
             case o_gwa_mixed_normal:
                 opt_gwa_mixed_normal = true; break;
+            case o_gwa_case8_emit_all:
+                opt_gwa_case8_emit_all = true; break;
+            case o_gwa_case8_no_emit_all:
+                opt_gwa_case8_emit_all = false; break;
 
             case o_output:   
                 output_file = args.OptionArg(); break;
@@ -950,6 +955,88 @@ ToLower(string& s) {
     std::transform(s.begin(), s.end(), s.begin(), ::tolower);
 }
 
+#define show_set(__f__) ((__f__) ? " [set]" : "")
+static void
+usage() {
+    cerr << "\n\
+Usage:   " << NAME << " [options] -r refnames.txt <in1.vcf> [ in2.vcf ... ]\n\
+\n\
+Collect VCF results and produce a consensus list of variants.\n\
+\n\
+NOTE: " << NAME << " " << VERSION << " is under active development.\n\
+\n\
+     --references FILE            file containing reference names in order [REQUIRED]\n\
+                                  should be in the same order as the VCF files\n\
+     --output FILE                output file name [default is stdout]\n\
+     --debug INT                  debug info level INT [" << opt_debug << "]\n\
+     --progress INT               print variants processed mod INT [" << opt_progress << "]\n\
+\n\
+     --filter-annotate            annotate FILTER field with additional method-specific information" << show_set(opt_filter_annotate) << "\n\
+     --full-filter-annotate       annotate FILTER field with even more method-specific information" << show_set(opt_full_filter_annotate) << "\n\
+     --no-filter-annotate         do not annotate FILTER field, use only PASS and filters indicating failure described in the VCF header" << show_set(!opt_filter_annotate) << "\n\
+\n\
+     --method METHOD              use combining method 'METHOD', only 'gwa' and 'gwa-ksp' are implemented\n\
+\n\
+'gwa' method options:\n\
+\n\
+     --gwa-window INT                 Lookback window size for mean quality, max " << max_gwa_window_size << "[" << opt_gwa_window_size << "]\n\
+     --gwa-quality FLOAT              Minimum quality when combining both VQSR and LowQual variants [" << opt_gwa_quality << "]\n\
+                                      Specifying this option will set all the quality values below to the given value.\n\
+     --gwa-quality-ref FLOAT          Minimum quality when combining variants and call matches reference [" << opt_gwa_quality_ref << "]\n\
+                                      Specifying this option will also set --gwa-lowqual-quality-ref and --gwa-mixed-quality-ref.\n\
+     --gwa-vqsr-quality FLOAT         Minimum quality when combining VQSR variants [" << opt_gwa_vqsr_quality << "]\n\
+     --gwa-lowqual-quality FLOAT      Minimum quality when combining LowQual variants and call does not match reference [" << opt_gwa_lowqual_quality << "]\n\
+     --gwa-lowqual-quality-ref FLOAT  Minimum quality to meet when combining LowQual variants and call matches reference [" << opt_gwa_lowqual_quality_ref << "]\n\
+     --gwa-mixed-quality FLOAT        Minimum quality when combining VQSR with LowQual variants [" << opt_gwa_mixed_quality << "]\n\
+     --gwa-mixed-quality-ref FLOAT    Minimum quality to meet when combining VQSR with LowQual variants and call matches reference [" << opt_gwa_mixed_quality_ref << "]\n\
+\n\
+     --gwa-force-consistency          Require G, W and A to agree on variant/no-variant for potentially ambiguous cases 4 and 5" << show_set(opt_gwa_force_consistency) << "\n\
+     --gwa-no-force-consistency       Do not require G, W and A to agree on variant/no-variant for potentially ambiguous cases 4 and 5" << show_set(! opt_gwa_force_consistency) << "\n\
+\n\
+     --gwa-disable-context-quality    Disables usage of context quality, qualities instead compared directly" << show_set(! opt_gwa_enable_context_quality) << "\n\
+     --gwa-enable-context-quality     Enables usage of context quality" << show_set(opt_gwa_enable_context_quality) << "\n\
+                                      NOTE: context quality is very experimental and may be incorrect, use at you rown risk\n\
+\n\
+     --gwa-vqsr-vqsr-fail             Mark as FAIL all cases having both genomic and WGA VQSR-filtered variants" << show_set(! opt_gwa_vqsr_vqsr_normal) << "\n\
+     --gwa-vqsr-vqsr-normal           PASS/FAIL cases having both genomic and WGA VQSR-filtered variants depending on culprits" << show_set(opt_gwa_vqsr_vqsr_normal) << "\n\
+     --gwa-lowqual-lowqual-fail       Mark as FAIL all cases having both genomic and WGA LowQual-filtered variants" << show_set(! opt_gwa_lowqual_lowqual_normal) << "\n\
+     --gwa-lowqual-lowqual-normal     PASS/FAIL cases having both genomic and WGA LowQual-filtered variants depending on culprits" << show_set(opt_gwa_lowqual_lowqual_normal) << "\n\
+     --gwa-mixed-fail                 Mark as FAIL all cases having both a VQSR-filtered and a LowQual-filtered variant" << show_set(! opt_gwa_mixed_normal) << "\n\
+     --gwa-mixed-normal               PASS/FAIL cases having both a VQSR-filtered and a LowQual-filtered variant" << show_set(opt_gwa_mixed_normal) << "\n\
+                                      --gwa-vqsr-lowqual-fail and --gwa-vqsr-lowqual-normal are synonyms for the --gwa-mixed-* options\n\
+     --gwa-case8-emit-all             For case 8 (one of G/W has a variant while the other does not), emit the A call for the site" << show_set(opt_gwa_case8_emit_all) << "\n\
+                                      When the quality of one library (often W) is poor, this option may help reduce bias at the\n\
+                                      probable cost of a slight increase in failing case 8 sites for samples with better libraries.\n\
+     --gwa-case8-no-emit-all          For case 8 (one of G/W has a variant while the other does not), emit the variant" << show_set(! opt_gwa_case8_emit_all) << "\n\
+\n\
+\n\
+The 'gwa-ksp' method sets the following options. Options appearing after this may make further changes to option values.\n\
+\n\
+     --method gwa\n\
+     --gwa-quality 30\n\
+     --gwa-quality-ref 20\n\
+     --gwa-force-consistency\n\
+     --gwa-disable-context-quality\n\
+     --gwa-vqsr-vqsr-fail\n\
+     --gwa-mixed-fail\n\
+     --gwa-case8-emit-all\n\
+\n\
+\n\
+For methods 'gwa' and 'gwa-ksp', all VCF files must be specified using these options:\n\
+\n\
+     --vcf-genomic FILE           VCF file containing genomic calls\n\
+     --vcf-wga FILE               VCF file containing whole-genome-amplified calls\n\
+     --vcf-all FILE               VCF file containing all (pooled) calls\n\
+\n\
+\n\
+     -h | -? | --help             help\n\
+\n\
+Version:     " << NAME << " " << VERSION << "\n\
+\n\
+Build flags: " << CXXFLAGS << "\n\
+\n";
+}
+
 static void
 exitmessage(const string& msg, const string& msg2, const string& msg3, const string& msg4, const string& msg5) {
     if (! msg.empty()) cerr << endl << "*** " << msg << msg2 << msg3 << msg4 << msg5 << endl;
@@ -958,83 +1045,11 @@ exitmessage(const string& msg, const string& msg2, const string& msg3, const str
 
 static void
 exitusage(const string& msg, const string& msg2, const string& msg3, const string& msg4, const string& msg5) {
-#define show_set(__f__) if (__f__) cerr << " [set]";
     if (! msg.empty()) cerr << endl << "*** " << msg << msg2 << msg3 << msg4 << msg5 << endl;
-    cerr << endl;
-    cerr << "Usage:   " << NAME << " [options] -r refnames.txt <in1.vcf> [ in2.vcf ... ]" << endl;
-    cerr << endl;
-    cerr << "Collect VCF results and produce a consensus list of variants." << endl;
-    cerr << endl;
-    cerr << "NOTE: " << NAME << " " << VERSION << " is under active development." << endl;
-    cerr << endl;
-    cerr << "     --references FILE            file containing reference names in order [REQUIRED]" << endl;
-    cerr << "                                  should be in the same order as the VCF files" << endl;
-    cerr << "     --output FILE                output file name [default is stdout]" << endl;
-    cerr << "     --debug INT                  debug info level INT [" << opt_debug << "]" << endl;
-    cerr << "     --progress INT               print variants processed mod INT [" << opt_progress << "]" << endl;
-    cerr << endl;
-    cerr << "     --filter-annotate            annotate FILTER field with additional method-specific information"; show_set(opt_filter_annotate); cerr << endl;
-    cerr << "     --full-filter-annotate       annotate FILTER field with even more method-specific information"; show_set(opt_full_filter_annotate); cerr << endl;
-    cerr << "     --no-filter-annotate         do not annotate FILTER field, use only PASS and filters indicating failure described in the VCF header"; show_set(!opt_filter_annotate); cerr << endl;
-    cerr << endl;
-    cerr << "     --method METHOD              use combining method 'METHOD', only 'gwa' and 'gwa-ksp' are implemented" << endl;
-    cerr << endl;
-    cerr << "'gwa' method options:" <<endl;
-    cerr << endl;
-    cerr << "     --gwa-window INT                 lookback window size for mean quality, max " << max_gwa_window_size << "[" << opt_gwa_window_size << "]" << endl;
-    cerr << "     --gwa-quality FLOAT              minimum quality when combining both VQSR and LowQual variants [" << opt_gwa_quality << "]" << endl;
-    cerr << "                                      Specifying this option will set all the quality values below to the given value." << endl;
-    cerr << "     --gwa-quality-ref FLOAT          minimum quality when combining variants and call matches reference [" << opt_gwa_quality_ref << "]" << endl;
-    cerr << "                                      Specifying this option will also set --gwa-lowqual-quality-ref and --gwa-mixed-quality-ref." << endl;
-    cerr << "     --gwa-vqsr-quality FLOAT         minimum quality when combining VQSR variants [" << opt_gwa_vqsr_quality << "]" << endl;
-    cerr << "     --gwa-lowqual-quality FLOAT      minimum quality when combining LowQual variants and call does not match reference [" << opt_gwa_lowqual_quality << "]" << endl;
-    cerr << "     --gwa-lowqual-quality-ref FLOAT  minimum quality to meet when combining LowQual variants and call matches reference [" << opt_gwa_lowqual_quality_ref << "]" << endl;
-    cerr << "     --gwa-mixed-quality FLOAT        minimum quality when combining VQSR with LowQual variants [" << opt_gwa_mixed_quality << "]" << endl;
-    cerr << "     --gwa-mixed-quality-ref FLOAT    minimum quality to meet when combining VQSR with LowQual variants and call matches reference [" << opt_gwa_mixed_quality_ref << "]" << endl;
-    cerr << endl;
-    cerr << "     --gwa-force-consistency          require G, W and A to agree on variant/no-variant for potentially ambiguous cases 4 and 5"; show_set(opt_gwa_force_consistency); cerr << endl;
-    cerr << "     --gwa-no-force-consistency       do not require G, W and A to agree on variant/no-variant for potentially ambiguous cases 4 and 5"; show_set(! opt_gwa_force_consistency); cerr << endl;
-    cerr << endl;
-    cerr << "     --gwa-disable-context-quality    disables usage of context quality, qualities instead compared directly"; show_set(! opt_gwa_enable_context_quality); cerr << endl;
-    cerr << "     --gwa-enable-context-quality     enables usage of context quality"; show_set(opt_gwa_enable_context_quality); cerr << endl;
-    cerr << "                                      NOTE: context quality is very experimental and may be incorrect, use at you rown risk" << endl;
-    cerr << endl;
-    cerr << "     --gwa-vqsr-vqsr-fail             mark as FAIL all cases having both genomic and WGA VQSR-filtered variants"; show_set(! opt_gwa_vqsr_vqsr_normal); cerr << endl;
-    cerr << "     --gwa-vqsr-vqsr-normal           PASS/FAIL cases having both genomic and WGA VQSR-filtered variants depending on culprits"; show_set(opt_gwa_vqsr_vqsr_normal); cerr << endl;
-    cerr << "     --gwa-lowqual-lowqual-fail       mark as FAIL all cases having both genomic and WGA LowQual-filtered variants"; show_set(! opt_gwa_lowqual_lowqual_normal); cerr << endl;
-    cerr << "     --gwa-lowqual-lowqual-normal     PASS/FAIL cases having both genomic and WGA LowQual-filtered variants depending on culprits"; show_set(opt_gwa_lowqual_lowqual_normal); cerr << endl;
-    cerr << "     --gwa-mixed-fail                 mark as FAIL all cases having both a VQSR-filtered and a LowQual-filtered variant"; show_set(! opt_gwa_mixed_normal); cerr << endl;
-    cerr << "     --gwa-mixed-normal               PASS/FAIL cases having both a VQSR-filtered and a LowQual-filtered variant"; show_set(opt_gwa_mixed_normal); cerr << endl;
-    cerr << endl;
-    cerr << "                                      --gwa-vqsr-lowqual-fail and --gwa-vqsr-lowqual-normal are synonyms for the above --gwa-mixed-* options" << endl;
-    cerr << endl;
-    cerr << endl;
-    cerr << "The 'gwa-ksp' method sets the following options. Options appearing after this may make further changes to option values." <<endl;
-    cerr << endl;
-    cerr << "     --method gwa" << endl;
-    cerr << "     --gwa-quality 30" << endl;
-    cerr << "     --gwa-quality-ref 20" << endl;
-    cerr << "     --gwa-force-consistency" << endl;
-    cerr << "     --gwa-disable-context-quality" << endl;
-    cerr << "     --gwa-vqsr-vqsr-fail" << endl;
-    cerr << "     --gwa-mixed-fail" << endl;
-    cerr << endl;
-    cerr << endl;
-    cerr << "For methods 'gwa' and 'gwa-ksp', all VCF files must be specified using these options:" << endl;
-    cerr << endl;
-    cerr << "     --vcf-genomic FILE           VCF file containing genomic calls" << endl;
-    cerr << "     --vcf-wga FILE               VCF file containing whole-genome-amplified calls" << endl;
-    cerr << "     --vcf-all FILE               VCF file containing all (pooled) calls" << endl;
-    cerr << endl;
-    cerr << endl;
-    cerr << "     -h | -? | --help             help" << endl;
-    cerr << endl;
-    cerr << "Version:     " << NAME << " " << VERSION << endl;
-    cerr << endl;
-    cerr << "Build flags: " << CXXFLAGS << endl;
-    cerr << endl;
+    usage();
     exit(1);
 }
+
 
 
 //------- CLASS LookbackWindow
@@ -2994,68 +3009,110 @@ method_gwa_case7_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
 }
 
 
-// -------- 8_G  Variant in v_Gen, no variant in v_Wga.  Emit v_Gen variant.
+// -------- 8_G  Variant in v_Gen, no variant in v_Wga.  Emit v_Gen or v_All variant.
 
 
 Variant
 method_gwa_case8_G(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 8_G method_gwa_case8_G()" << endl;
-    Variant v_ANS = create_return_variant(v_Gen);
-    annotate_first_case(v_ANS, "GWA8_G");
-    annotate_case_add_full_filter(v_ANS, "snpG");
-    if (opt_gwa_enable_context_quality) {
-        v_ANS.quality += (v_Wga.quality - qualwindow_Wga.mean());
-        annotate_case(v_ANS, "Qual_G+WContext");
+    Variant v_ANS;
+    if (opt_gwa_case8_emit_all) {
+        v_ANS = create_return_variant(v_All);
+        annotate_first_case(v_ANS, "GWA8_G_A");
+        annotate_case(v_ANS, "Qual_A");
     } else {
-        annotate_case(v_ANS, "Qual_G");
-    }
-    if (v_ANS.quality >= opt_gwa_quality) {
-        set_first_filter(v_ANS, "PASS");
+        v_ANS = create_return_variant(v_Gen);
+        annotate_first_case(v_ANS, "GWA8_G_G");
         if (opt_gwa_enable_context_quality) {
-            annotate_passed_ContextQuality(v_ANS, opt_gwa_quality);
+            v_ANS.quality += (v_Wga.quality - qualwindow_Wga.mean());
+            annotate_case(v_ANS, "Qual_G+WContext");
         } else {
-            annotate_passed_Quality(v_ANS, opt_gwa_quality);
+            annotate_case(v_ANS, "Qual_G");
+        }
+    }
+    annotate_case_add_full_filter(v_ANS, "snpG");
+    annotate_case_add_full_filter(v_ANS, "noW");
+    annotate_case_add_full_filter(v_ANS, is_GATK_variant_loose(v_All) ? "snpA" : "noA");
+    if (opt_gwa_case8_emit_all && ! is_GATK_variant_loose(v_ANS)) {
+        // compare to reference quality since A is ref here
+        if (v_ANS.quality >= opt_gwa_quality_ref) {
+            set_first_filter(v_ANS, "PASS");
+            annotate_passed_QualityRef(v_ANS, opt_gwa_quality_ref);
+        } else {
+            set_first_filter(v_ANS, "FAIL");
+            annotate_failed_QualityRef(v_ANS, opt_gwa_quality_ref);
         }
     } else {
-        set_first_filter(v_ANS, "FAIL");
-        if (opt_gwa_enable_context_quality) {
-            annotate_failed_ContextQuality(v_ANS, opt_gwa_quality);
+        // compare to variant quality
+        if (v_ANS.quality >= opt_gwa_quality) {
+            set_first_filter(v_ANS, "PASS");
+            if (opt_gwa_enable_context_quality) {
+                annotate_passed_ContextQuality(v_ANS, opt_gwa_quality);
+            } else {
+                annotate_passed_Quality(v_ANS, opt_gwa_quality);
+            }
         } else {
-            annotate_failed_Quality(v_ANS, opt_gwa_quality);
+            set_first_filter(v_ANS, "FAIL");
+            if (opt_gwa_enable_context_quality) {
+                annotate_failed_ContextQuality(v_ANS, opt_gwa_quality);
+            } else {
+                annotate_failed_Quality(v_ANS, opt_gwa_quality);
+            }
         }
     }
     return(v_ANS);
 }
 
 
-// -------- 8_W  No-variant in v_Gen, variant in v_Wga.  Emit v_Wga variant.
+// -------- 8_W  No-variant in v_Gen, variant in v_Wga.  Emit v_Wga or v_All variant.
 
 
 Variant
 method_gwa_case8_W(Variant& v_Gen, Variant& v_Wga, Variant& v_All) {
     if (DEBUG(2)) cout << "*** case 8_W method_gwa_case8_W()" << endl;
-    Variant v_ANS = create_return_variant(v_Wga);
-    annotate_first_case(v_ANS, "GWA8_W");
-    annotate_case_add_full_filter(v_ANS, "snpW");
-    if (opt_gwa_enable_context_quality) {
-        v_ANS.quality += (v_Gen.quality - qualwindow_Gen.mean());
-        annotate_case(v_ANS, "Qual_W+GContext");
+    Variant v_ANS;
+    if (opt_gwa_case8_emit_all) {
+        v_ANS = create_return_variant(v_All);
+        annotate_first_case(v_ANS, "GWA8_W_A");
+        annotate_case(v_ANS, "Qual_A");
     } else {
-        annotate_case(v_ANS, "Qual_W");
-    }
-    if (v_ANS.quality >= opt_gwa_quality) {
-        set_first_filter(v_ANS, "PASS");
+        v_ANS = create_return_variant(v_Wga);
+        annotate_first_case(v_ANS, "GWA8_W_W");
         if (opt_gwa_enable_context_quality) {
-            annotate_passed_ContextQuality(v_ANS, opt_gwa_quality);
+            v_ANS.quality += (v_Gen.quality - qualwindow_Gen.mean());
+            annotate_case(v_ANS, "Qual_W+GContext");
         } else {
-            annotate_passed_Quality(v_ANS, opt_gwa_quality);
+            annotate_case(v_ANS, "Qual_W");
+        }
+    }
+    annotate_case_add_full_filter(v_ANS, "snpW");
+    annotate_case_add_full_filter(v_ANS, "noG");
+    annotate_case_add_full_filter(v_ANS, is_GATK_variant_loose(v_All) ? "snpA" : "noA");
+    if (opt_gwa_case8_emit_all && ! is_GATK_variant_loose(v_ANS)) {
+        // compare to reference quality since A is ref here
+        if (v_ANS.quality >= opt_gwa_quality_ref) {
+            set_first_filter(v_ANS, "PASS");
+            annotate_passed_QualityRef(v_ANS, opt_gwa_quality_ref);
+        } else {
+            set_first_filter(v_ANS, "FAIL");
+            annotate_failed_QualityRef(v_ANS, opt_gwa_quality_ref);
         }
     } else {
-        set_first_filter(v_ANS, "FAIL");
-        if (opt_gwa_enable_context_quality) {
-            annotate_failed_ContextQuality(v_ANS, opt_gwa_quality);
+        // compare to variant quality
+        if (v_ANS.quality >= opt_gwa_quality) {
+            set_first_filter(v_ANS, "PASS");
+            if (opt_gwa_enable_context_quality) {
+                annotate_passed_ContextQuality(v_ANS, opt_gwa_quality);
+            } else {
+                annotate_passed_Quality(v_ANS, opt_gwa_quality);
+            }
         } else {
-            annotate_failed_Quality(v_ANS, opt_gwa_quality);
+            set_first_filter(v_ANS, "FAIL");
+            if (opt_gwa_enable_context_quality) {
+                annotate_failed_ContextQuality(v_ANS, opt_gwa_quality);
+            } else {
+                annotate_failed_Quality(v_ANS, opt_gwa_quality);
+            }
         }
     }
     return(v_ANS);
