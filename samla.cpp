@@ -1033,6 +1033,7 @@ For methods 'gwa' and 'gwa-ksp', all VCF files must be specified using these opt
 \n\
 Version:     " << NAME << " " << VERSION << "\n\
 \n\
+Compiler:    " << CXX_VERSION << "\n\
 Build flags: " << CXXFLAGS << "\n\
 \n";
 }
