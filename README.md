@@ -9,7 +9,13 @@ Coverage of data types (1) may be insufficient for high-confidence genotyping, h
 
 Samla produces a consensus all-sites VCF file after examining the combined strength of support for both reference-matching and variant sites using all three VCF files.  The consensus VCF may contain modest gains in variants, on the order of a few percentage points, but both reference and variant sites will be of better quality: those with consistent support will be strengthened, while those with inconsistent support will be weakened.
 
-More information is available via `samla --help`.
+This repository links to my local fork of the `vcflib` repository.  If you are cloning this, please get your local copy of the `vcflib` repository with
+
+    git clone --recursive https://github.com/douglasgscofield/samla.git
+
+More information on usage once downloaded is available via `samla --help`.  Once downloaded, do
+
+    cd samla ; make
 
 ~~~~
 Usage:   samla [options] -r refnames.txt <in1.vcf> [ in2.vcf ... ]
