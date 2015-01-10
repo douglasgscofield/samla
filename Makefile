@@ -10,7 +10,9 @@ CXX=		g++
 O_FLAG=     -O0
 D_FLAG=     -D_WITH_DEBUG -ggdb -g3 -fvar-tracking-assignments -fno-inline -fno-inline-small-functions -fno-eliminate-unused-debug-types
 P_FLAG=         
-CXXFLAGS=	-I../vcflib -Wall -D_FILE_OFFSET_BITS=64 $(O_FLAG) $(D_FLAG) $(P_FLAG)
+# My fork of vcflib is now included as a git submodule
+VCFLIB=     vcflib
+CXXFLAGS=	-I$(VCFLIB) -Wall -D_FILE_OFFSET_BITS=64 $(O_FLAG) $(D_FLAG) $(P_FLAG)
 
 RELEASE_O_FLAG = -O2
 RELEASE_D_FLAG = -D_WITH_DEBUG
@@ -20,33 +22,33 @@ PROG=		samla
 
 LIBS=		-lm -lz
 
-VCFLIB_LIBS=-L../vcflib/tabixpp/ -ltabix
+VCFLIB_LIBS=-L$(VCFLIB)/tabixpp/ -ltabix
 
 OBJS=		samla.o
 
 HEAD_COMM=  version.h \
 			SimpleOpt.h \
-			../vcflib/src/Variant.h \
-			../vcflib/src/split.h \
-			../vcflib/src/join.h
+			$(VCFLIB)/src/Variant.h \
+			$(VCFLIB)/src/split.h \
+			$(VCFLIB)/src/join.h
 
 HEAD=		$(HEAD_COMM)
 
 VCFLIB_AR=	vcflib.a
 
-VCFLIB_OBJS=../vcflib/src/Variant.o \
-			../vcflib/src/split.o
-VCFLIB_OTHER_OBJS=../vcflib/smithwaterman/SmithWatermanGotoh.o \
-			../vcflib/smithwaterman/Repeats.o \
-			../vcflib/smithwaterman/LeftAlign.o \
-			../vcflib/smithwaterman/IndelAllele.o \
-			../vcflib/src/ssw.o \
-			../vcflib/src/ssw_cpp.o \
-			../vcflib/fastahack/Fasta.o \
-			../vcflib/fsom/fsom.o \
-			../vcflib/tabixpp/tabix.o \
-			../vcflib/tabixpp/bgzf.o
-VCFLIB_DISORDER=../vcflib/smithwaterman/disorder.c
+VCFLIB_OBJS=$(VCFLIB)/src/Variant.o \
+			$(VCFLIB)/src/split.o
+VCFLIB_OTHER_OBJS=$(VCFLIB)/smithwaterman/SmithWatermanGotoh.o \
+			$(VCFLIB)/smithwaterman/Repeats.o \
+			$(VCFLIB)/smithwaterman/LeftAlign.o \
+			$(VCFLIB)/smithwaterman/IndelAllele.o \
+			$(VCFLIB)/src/ssw.o \
+			$(VCFLIB)/src/ssw_cpp.o \
+			$(VCFLIB)/fastahack/Fasta.o \
+			$(VCFLIB)/fsom/fsom.o \
+			$(VCFLIB)/tabixpp/tabix.o \
+			$(VCFLIB)/tabixpp/bgzf.o
+VCFLIB_DISORDER=$(VCFLIB)/smithwaterman/disorder.c
 # NOTE: disorder.c is compiled fresh each time which seems wasteful, but it is C
 # source, and is built in its own program as pure C, whereas it is build with
 # other programs including vcflib as if it were C++.  If we always built as pure
@@ -109,7 +111,7 @@ $(OBJS): $(HEAD_COMM)
 samla.o: $(HEAD)
 
 $(VCFLIB_OBJS):
-	cd ../vcflib && make
+	cd $(VCFLIB) && make
 
 
 #---------------------------  Other targets
